@@ -1355,10 +1355,7 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
             </div>`).join("")}
           </div>
         </div>
-      </div>
 
-      <!-- Summary Table -->
-      <div style="page-break-inside:avoid;page-break-before:avoid;">
         <table style="width:100%;border-collapse:collapse;border:1.5px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-bottom:20px;">
           <thead><tr style="background:#f8fafc;">
             <th style="padding:11px 16px;text-align:left;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.2px;font-family:'Outfit',sans-serif;">ASSESSMENT AREA</th>
@@ -1368,22 +1365,21 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
           </tr></thead>
           <tbody>${areaRows}</tbody>
         </table>
-      </div>
 
-      <!-- Maturity Radar — full width, centred -->
-      <div style="page-break-inside:avoid;page-break-before:avoid;background:linear-gradient(160deg,#070F26,#0A1E3D);border-radius:16px;padding:24px 32px;display:flex;flex-direction:column;align-items:center;gap:14px;">
-        <p style="font-size:10px;font-weight:700;color:rgba(255,255,255,.35);letter-spacing:2px;margin:0;font-family:'Outfit',sans-serif;">MATURITY PROFILE — ALL ASSESSMENT AREAS</p>
-        ${masterRadarSVG(responses, 240)}
-        <div style="display:flex;flex-wrap:wrap;gap:8px 18px;justify-content:center;max-width:500px;">
-          ${Object.entries(AREAS).map(([aName, area]) => {
-            const ts = getTopicScores(aName, responses).filter(t => t.score > 0);
-            const avg = ts.length > 0 ? ts.reduce((a,b) => a + b.score, 0) / ts.length : null;
-            return `<div style="display:flex;align-items:center;gap:6px;">
-              <span style="width:9px;height:9px;border-radius:50%;background:${area.color};display:inline-block;flex-shrink:0;"></span>
-              <span style="font-size:10px;color:rgba(255,255,255,.55);font-family:'Outfit',sans-serif;">${area.short} — ${aName}</span>
-              ${avg ? `<span style="font-size:10px;font-weight:700;color:${area.color};font-family:'Outfit',sans-serif;">${avg.toFixed(1)}</span>` : ""}
-            </div>`;
-          }).join("")}
+        <div style="background:linear-gradient(160deg,#070F26,#0A1E3D);border-radius:16px;padding:24px 32px;display:flex;flex-direction:column;align-items:center;gap:14px;">
+          <p style="font-size:10px;font-weight:700;color:rgba(255,255,255,.35);letter-spacing:2px;margin:0;font-family:'Outfit',sans-serif;">MATURITY PROFILE — ALL ASSESSMENT AREAS</p>
+          ${masterRadarSVG(responses, 240)}
+          <div style="display:flex;flex-wrap:wrap;gap:8px 18px;justify-content:center;max-width:500px;">
+            ${Object.entries(AREAS).map(([aName, area]) => {
+              const ts = getTopicScores(aName, responses).filter(t => t.score > 0);
+              const avg = ts.length > 0 ? ts.reduce((a,b) => a + b.score, 0) / ts.length : null;
+              return `<div style="display:flex;align-items:center;gap:6px;">
+                <span style="width:9px;height:9px;border-radius:50%;background:${area.color};display:inline-block;flex-shrink:0;"></span>
+                <span style="font-size:10px;color:rgba(255,255,255,.55);font-family:'Outfit',sans-serif;">${area.short} — ${aName}</span>
+                ${avg ? `<span style="font-size:10px;font-weight:700;color:${area.color};font-family:'Outfit',sans-serif;">${avg.toFixed(1)}</span>` : ""}
+              </div>`;
+            }).join("")}
+          </div>
         </div>
       </div>
 
@@ -1503,7 +1499,8 @@ function printReport(html) {
 
   const iframe = document.createElement("iframe");
   iframe.id = "dmm-print-frame";
-  iframe.style.cssText = "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;border:none;pointer-events:none;";
+  // Must be large enough for Safari to paginate the full content correctly
+  iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:794px;height:1123px;border:none;visibility:hidden;";
   document.body.appendChild(iframe);
 
   const doc = iframe.contentDocument || iframe.contentWindow.document;
@@ -1519,7 +1516,7 @@ function printReport(html) {
       console.error("Print failed:", e);
     }
     setTimeout(() => { if (iframe.parentNode) iframe.remove(); }, 2000);
-  }, 1200);
+  }, 1500);
 }
 
 function ReportOverlay({ user, responses, onClose }) {
