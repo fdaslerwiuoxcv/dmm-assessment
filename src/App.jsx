@@ -1541,6 +1541,19 @@ function printRecsOnly(recs, user) {
     </div>`;
   }).join("");
 
+  const matrixSVG = payoffMatrixSVG(recs, 460);
+  const legendHTML = [
+    ["#068941","#E0F5EC","Quick Win"],
+    ["#0072BC","#DAEEF9","Strategic Investment"],
+    ["#CC7700","#FFF5CC","Fill-in"],
+    ["#94a3b8","#f1f5f9","Deprioritize"]
+  ].map(([c,bg,l]) =>
+    `<div style="display:inline-flex;align-items:center;gap:5px;background:${bg};padding:3px 9px;margin:2px;">
+      <span style="width:9px;height:9px;background:${c};display:inline-block;flex-shrink:0;"></span>
+      <span style="font-size:10px;font-weight:700;color:${c};font-family:Arial,sans-serif;">${l}</span>
+    </div>`
+  ).join("");
+
   const html = `
     <div style="padding:48px 52px 24px;font-family:Arial,sans-serif;">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #e2e8f0;padding-bottom:16px;margin-bottom:28px;">
@@ -1549,7 +1562,12 @@ function printRecsOnly(recs, user) {
       </div>
       <div style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:2px;margin-bottom:4px;">RECOMMENDATIONS</div>
       <div style="font-size:26px;font-weight:700;color:#0f172a;margin-bottom:4px;">Prioritized Action Plan</div>
-      <div style="font-size:12px;color:#64748b;margin-bottom:24px;">${user.org} &nbsp;·&nbsp; ${date}</div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:20px;">${user.org} &nbsp;·&nbsp; ${date}</div>
+      <div style="padding:18px 20px;background:#f8fafc;border:1px solid #e2e8f0;margin-bottom:24px;">
+        <div style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin-bottom:12px;font-family:Arial,sans-serif;">VALUE vs. EFFORT PAYOFF MATRIX</div>
+        <div style="display:flex;justify-content:center;">${matrixSVG}</div>
+        <div style="display:flex;flex-wrap:wrap;justify-content:center;margin-top:10px;">${legendHTML}</div>
+      </div>
       ${cards}
     </div>`;
 
@@ -1609,7 +1627,7 @@ function ReportOverlay({ user, responses, onClose }) {
       summaryRef.current = summary;
       recsRef.current    = recs;
       try {
-        setHtml(buildReportHTML(user, responses, summary, recs));
+        setHtml(buildReportHTML(user, responses, summary, null));
         setStatus("ready");
       } catch (e) {
         console.error("buildReportHTML (with AI) failed:", e);
@@ -1627,7 +1645,7 @@ function ReportOverlay({ user, responses, onClose }) {
 
   const handleToggle = (val) => {
     setIncludeRecs(val);
-    if (status === "ready") rebuild(summaryRef.current, recsRef.current, val);
+    if (status === "ready") rebuild(summaryRef.current, null, false);
   };
 
   // ── Error screen ─────────────────────────────────────────────────────────────
@@ -1691,18 +1709,6 @@ function ReportOverlay({ user, responses, onClose }) {
           )}
         </div>
 
-        {/* Centre — toggle */}
-        <div
-          onClick={() => status === "ready" && handleToggle(!includeRecs)}
-          style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 20, padding: "6px 6px 6px 14px", cursor: status !== "ready" ? "not-allowed" : "pointer", opacity: status !== "ready" ? 0.4 : 1, transition: "background .15s", userSelect: "none" }}
-          title={includeRecs ? "Click to exclude recommendations from PDF" : "Click to include recommendations in PDF"}
-        >
-          <span style={{ color: "rgba(255,255,255,.75)", fontSize: 12, fontWeight: 500, whiteSpace: "nowrap" }}>Include Recommendations</span>
-          <div style={{ width: 38, height: 22, borderRadius: 11, background: includeRecs ? "#068941" : "rgba(255,255,255,.15)", position: "relative", transition: "background .2s", flexShrink: 0 }}>
-            <div style={{ width: 16, height: 16, borderRadius: "50%", background: "white", position: "absolute", top: 3, left: includeRecs ? 19 : 3, transition: "left .2s", boxShadow: "0 1px 3px rgba(0,0,0,.3)" }} />
-          </div>
-        </div>
-
         {/* Right */}
         <div style={{ display: "flex", gap: 10, flexShrink: 0 }}>
           <button
@@ -1710,7 +1716,7 @@ function ReportOverlay({ user, responses, onClose }) {
             disabled={status !== "ready"}
             style={{ display: "flex", alignItems: "center", gap: 8, background: status !== "ready" ? "rgba(0,114,188,.4)" : "linear-gradient(135deg,#0072BC,#009AA4)", border: "none", borderRadius: 9, padding: "9px 20px", color: "white", fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: status !== "ready" ? "not-allowed" : "pointer", opacity: status !== "ready" ? 0.6 : 1, whiteSpace: "nowrap" }}
           >
-            🖨 Full Report PDF
+            🖨 Print Assessment
           </button>
           <button
             onClick={() => printRecsOnly(recsRef.current, user)}
@@ -1718,7 +1724,7 @@ function ReportOverlay({ user, responses, onClose }) {
             title="Export just the Prioritized Action Plan as a standalone PDF"
             style={{ display: "flex", alignItems: "center", gap: 8, background: status !== "ready" || !recsRef.current ? "rgba(6,137,65,.3)" : "linear-gradient(135deg,#068941,#00a86b)", border: "none", borderRadius: 9, padding: "9px 20px", color: "white", fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: status !== "ready" || !recsRef.current ? "not-allowed" : "pointer", opacity: status !== "ready" || !recsRef.current ? 0.5 : 1, whiteSpace: "nowrap" }}
           >
-            📋 Recommendations PDF
+            📋 Print Action Plan
           </button>
           <button
             onClick={onClose}
