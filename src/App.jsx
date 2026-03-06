@@ -1318,12 +1318,26 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
         <span style="font-size:10px;font-weight:700;color:#cbd5e1;letter-spacing:2px;font-family:'Outfit',sans-serif;">CMMI DMM ASSESSMENT REPORT</span>
       </div>
       <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:2px;margin:0 0 6px;font-family:'Outfit',sans-serif;">EXECUTIVE SUMMARY</p>
-      <h2 style="font-family:'Fraunces',serif;font-size:36px;font-weight:700;color:#0f172a;margin:0 0 28px;">Executive Assessment: Data Management Maturity</h2>
 
-      ${aiSummary ? `
-      <div style="margin-bottom:32px;padding:28px 32px;background:linear-gradient(135deg,#070F26,#005B96);border-radius:14px;color:white;">
-        <div style="font-size:13.5px;color:rgba(255,255,255,.88);line-height:1.85;font-family:'Outfit',sans-serif;">${aiSummary.replace(/\n\n/g, '</p><p style="margin:12px 0 0;font-size:13.5px;color:rgba(255,255,255,.88);line-height:1.85;font-family:Outfit,sans-serif;">').replace(/\n/g, '<br/>')}</div>
-      </div>` : ""}
+      ${aiSummary ? (() => {
+        // Strip any markdown title lines (lines starting with ** or #) that Claude sometimes prepends
+        const cleaned = aiSummary
+          .split('\n')
+          .filter(line => !/^\*\*.*\*\*$/.test(line.trim()) && !/^#+\s/.test(line.trim()))
+          .join('\n')
+          .trim();
+        // Split into paragraphs and render
+        const paragraphStyle = `margin:12px 0 0;font-size:14px;color:rgba(255,255,255,.88);line-height:1.85;font-family:Outfit,sans-serif;`;
+        const paras = cleaned.split(/\n\n+/).filter(Boolean);
+        const body = paras.map((p, i) =>
+          `<p style="${i === 0 ? 'margin:0;' : 'margin:14px 0 0;'}font-size:14px;color:rgba(255,255,255,.88);line-height:1.85;font-family:Outfit,sans-serif;">${p.replace(/\n/g, '<br/>')}</p>`
+        ).join('');
+        return `
+      <div style="margin-bottom:32px;padding:32px 36px;background:linear-gradient(135deg,#070F26,#005B96);border-radius:14px;color:white;">
+        <h3 style="font-family:'Fraunces',serif;font-size:26px;font-weight:700;color:white;margin:0 0 20px;line-height:1.2;">Executive Assessment: Data Management Maturity</h3>
+        ${body}
+      </div>`;
+      })() : ""}
 
       <div style="background:#f8fafc;border-radius:12px;padding:18px 22px;margin-bottom:28px;border:1.5px solid #e2e8f0;">
         <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin:0 0 12px;font-family:'Outfit',sans-serif;">CMMI DMM MATURITY SCALE</p>
