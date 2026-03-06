@@ -1143,15 +1143,45 @@ function recommendationsSectionHTML(recs) {
     </div>`;
   }).join("");
 
+  // Wrap each rec card in its own padded sibling — never inside a tall parent
+  // container that Safari could clip at a page boundary.
+  const paddedCards = recs.map((r, i) => {
+    const p = priorityColor(r.effort, r.value);
+    return `<div style="padding:0 52px 14px;">
+      <div style="padding:16px 18px;background:#fafafa;border:1.5px solid #e2e8f0;border-left:4px solid ${p.color};border-radius:10px;page-break-inside:avoid;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:8px;">
+          <div style="display:flex;align-items:flex-start;gap:10px;flex:1;">
+            <span style="width:24px;height:24px;border-radius:50%;background:${p.color};color:white;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'Outfit',sans-serif;">${i+1}</span>
+            <div>
+              <div style="font-size:13.5px;font-weight:700;color:#0f172a;font-family:'Outfit',sans-serif;margin-bottom:4px;">${r.title}</div>
+              <div style="font-size:11px;color:#94a3b8;font-family:'Outfit',sans-serif;">${r.area}</div>
+            </div>
+          </div>
+          <span style="background:${p.bg};color:${p.color};border:1.5px solid ${p.color}40;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0;font-family:'Outfit',sans-serif;">${p.label}</span>
+        </div>
+        <p style="margin:0 0 10px;font-size:12.5px;color:#334155;line-height:1.65;font-family:'Outfit',sans-serif;">${r.description}</p>
+        <div style="background:white;border-radius:8px;padding:10px 14px;border:1px solid #e2e8f0;margin-bottom:10px;">
+          <div style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:1px;margin-bottom:4px;font-family:'Outfit',sans-serif;">BUSINESS VALUE</div>
+          <div style="font-size:12px;color:#334155;line-height:1.6;font-family:'Outfit',sans-serif;">${r.business_value}</div>
+        </div>
+        <div style="display:flex;gap:16px;">
+          <div style="font-size:11px;color:#64748b;font-family:'Outfit',sans-serif;">⚡ Effort: <strong style="color:#0f172a;">${effortLabel(r.effort)}</strong></div>
+          <div style="font-size:11px;color:#64748b;font-family:'Outfit',sans-serif;">💎 Value: <strong style="color:#0f172a;">${valueLabel(r.value)}</strong></div>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+
   return `
-    <div style="page-break-before:always;padding:44px 52px;">
+    <!-- Recs header + matrix: self-contained, no overflow risk -->
+    <div style="page-break-before:always;padding:44px 52px 24px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;padding-bottom:20px;border-bottom:1.5px solid #f1f5f9;">
         ${nttLogoBlackHTML(24)}
         <span style="font-size:10px;font-weight:700;color:#cbd5e1;letter-spacing:2px;font-family:'Outfit',sans-serif;">CMMI DMM ASSESSMENT REPORT</span>
       </div>
       <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:2px;margin:0 0 6px;font-family:'Outfit',sans-serif;">RECOMMENDATIONS</p>
-      <h2 style="font-family:'Fraunces',serif;font-size:30px;font-weight:700;color:#0f172a;margin:0 0 28px;">Prioritized Action Plan</h2>
-      <div style="page-break-inside:avoid;margin-bottom:24px;padding:24px 28px;background:#f8fafc;border-radius:14px;border:1.5px solid #e2e8f0;">
+      <h2 style="font-family:'Fraunces',serif;font-size:30px;font-weight:700;color:#0f172a;margin:0 0 24px;">Prioritized Action Plan</h2>
+      <div style="page-break-inside:avoid;padding:24px 28px;background:#f8fafc;border-radius:14px;border:1.5px solid #e2e8f0;">
         <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin:0 0 16px;font-family:'Outfit',sans-serif;">VALUE vs. EFFORT PAYOFF MATRIX</p>
         <div style="display:flex;justify-content:center;">${payoffMatrixSVG(recs, 480)}</div>
         <div style="display:flex;gap:18px;justify-content:center;margin-top:14px;flex-wrap:wrap;">
@@ -1162,8 +1192,9 @@ function recommendationsSectionHTML(recs) {
             </div>`).join("")}
         </div>
       </div>
-      ${recCards}
-    </div>`;
+    </div>
+    <!-- Each rec card is a top-level sibling — no tall ancestor for Safari to clip -->
+    ${paddedCards}`;
 }
 
 // ─── PDF Report Builder ───────────────────────────────────────────────────────
@@ -1248,7 +1279,7 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
       </div>`;
     }).join("");
 
-    return `<div style="page-break-before:always;padding:44px 52px;">
+    return `<div style="padding:44px 52px;page-break-before:always;overflow:visible;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:1.5px solid #f1f5f9;">
         ${nttLogoBlackHTML(20)}
         <span style="font-size:10px;font-weight:700;color:#cbd5e1;letter-spacing:2px;font-family:'Outfit',sans-serif;">CMMI DMM ASSESSMENT REPORT</span>
@@ -1484,11 +1515,36 @@ Calibrate effort and value scores realistically — not everything should be hig
 }
 
 // ─── Print Helper ─────────────────────────────────────────────────────────────
-// Simply calls window.print() — the @media print CSS already hides the app UI
-// and shows only #dmm-report-overlay, so the full report prints from the main
-// window with no iframe/blob/popup truncation issues.
-function printReport() {
-  window.print();
+function printReport(html) {
+  const fullHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8"/>
+  <title>NTT DATA — CMMI DMM Assessment Report</title>
+  <style>
+    @media print {
+      @page { margin:14mm 12mm; size:A4; }
+      body { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; padding:0; background:white; overflow:visible !important; }
+    div { overflow:visible !important; }
+  </style>
+</head>
+<body>
+\${html}
+<script>
+  window.addEventListener('load', function() {
+    setTimeout(function() { window.print(); }, 1500);
+  });
+<\/script>
+</body>
+</html>`;
+  const blob = new Blob([fullHtml], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
+  if (!win) alert("Please allow popups for this site, then click Print/Export again.");
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
 function ReportOverlay({ user, responses, onClose }) {
@@ -1654,7 +1710,7 @@ function ReportOverlay({ user, responses, onClose }) {
         {/* Right */}
         <div style={{ display: "flex", gap: 10, flexShrink: 0 }}>
           <button
-            onClick={() => printReport()}
+            onClick={() => printReport(html)}
             disabled={status !== "ready"}
             style={{ display: "flex", alignItems: "center", gap: 8, background: status !== "ready" ? "rgba(0,114,188,.4)" : "linear-gradient(135deg,#0072BC,#009AA4)", border: "none", borderRadius: 9, padding: "9px 20px", color: "white", fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: status !== "ready" ? "not-allowed" : "pointer", opacity: status !== "ready" ? 0.6 : 1, whiteSpace: "nowrap" }}
           >
