@@ -1520,31 +1520,50 @@ Calibrate effort and value scores realistically — not everything should be hig
 }
 
 // ─── Print Helper ─────────────────────────────────────────────────────────────
-// Uses a hidden iframe — avoids Safari popup blocker and Chrome blank-page bugs.
+// Uses window.open — iframes clip content at their viewport height, causing
+// truncated PDFs. A new window has no height limit and paginates the full doc.
 function printReport(html) {
-  const existing = document.getElementById("dmm-print-frame");
-  if (existing) existing.remove();
+  const printWindow = window.open("", "_blank", "width=900,height=700");
+  if (!printWindow) {
+    alert("Please allow popups for this site to export the PDF.");
+    return;
+  }
 
-  const iframe = document.createElement("iframe");
-  iframe.id = "dmm-print-frame";
-  // Must be large enough for Safari to paginate the full content correctly
-  iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:794px;height:1123px;border:none;visibility:hidden;";
-  document.body.appendChild(iframe);
-
-  const doc = iframe.contentDocument || iframe.contentWindow.document;
-  doc.open();
-  doc.write("<!DOCTYPE html><html><head><meta charset=\"UTF-8\"/><title>NTT DATA — CMMI DMM Assessment Report</title><style>@media print { @page { margin:12mm 10mm; size:A4; } body { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; } } * { box-sizing:border-box; } body { margin:0; padding:0; background:white; }</style></head><body>" + html + "</body></html>");
-  doc.close();
-
-  setTimeout(() => {
-    try {
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print();
-    } catch(e) {
-      console.error("Print failed:", e);
+  printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8"/>
+  <title>NTT DATA — CMMI DMM Assessment Report</title>
+  <style>
+    @media print {
+      @page { margin:14mm 12mm; size:A4; }
+      body { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
     }
-    setTimeout(() => { if (iframe.parentNode) iframe.remove(); }, 2000);
-  }, 1500);
+    * { box-sizing:border-box; }
+    body { margin:0; padding:0; background:white; }
+  </style>
+</head>
+<body>${html}</body>
+</html>`);
+  printWindow.document.close();
+
+  // Wait for fonts/images to load before printing
+  printWindow.onload = () => {
+    setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+      setTimeout(() => printWindow.close(), 1000);
+    }, 800);
+  };
+
+  // Fallback if onload doesn't fire (some browsers)
+  setTimeout(() => {
+    if (!printWindow.closed) {
+      printWindow.focus();
+      printWindow.print();
+      setTimeout(() => printWindow.close(), 1000);
+    }
+  }, 2500);
 }
 
 function ReportOverlay({ user, responses, onClose }) {
