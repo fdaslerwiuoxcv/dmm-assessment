@@ -1,5 +1,42 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Component } from "react";
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Tooltip } from "recharts";
+
+// ─── Error Boundary ───────────────────────────────────────────────────────────
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    console.error("App crashed:", error, info?.componentStack);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#070F26", fontFamily: "'Outfit', sans-serif", padding: 40 }}>
+          <div style={{ maxWidth: 520, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 16, padding: "40px 44px", textAlign: "center" }}>
+            <div style={{ fontSize: 36, marginBottom: 16 }}>⚠️</div>
+            <h2 style={{ color: "white", fontFamily: "'Fraunces', serif", fontSize: 22, margin: "0 0 12px" }}>Something went wrong</h2>
+            <p style={{ color: "rgba(255,255,255,.55)", fontSize: 14, lineHeight: 1.7, margin: "0 0 8px" }}>
+              {this.state.error?.message || "An unexpected error occurred."}
+            </p>
+            <p style={{ color: "rgba(255,255,255,.35)", fontSize: 12, margin: "0 0 28px" }}>Your assessment data has been saved and will still be available after refreshing.</p>
+            <button
+              onClick={() => window.location.reload()}
+              style={{ background: "linear-gradient(135deg,#0072BC,#009AA4)", border: "none", borderRadius: 10, padding: "12px 28px", color: "white", fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}
+            >
+              ↺ Reload App
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ─── Font Injection ──────────────────────────────────────────────────────────
 const fontLink = document.createElement("link");
@@ -1258,7 +1295,7 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
       <div style="display:flex;gap:44px;margin-bottom:56px;align-items:flex-end;">
         ${stats.avg ? `<div>
           <div style="font-size:10px;color:rgba(255,255,255,.3);font-weight:600;letter-spacing:1.5px;margin-bottom:6px;font-family:'Outfit',sans-serif;">OVERALL MATURITY SCORE</div>
-          <div style="font-family:'Fraunces',serif;font-size:68px;font-weight:700;color:white;line-height:1;">${stats.avg.toFixed(1)}</div>
+          <div style="font-family:'Fraunces',serif;font-size:68px;font-weight:700;color:white;line-height:1;">${stats.avg ? stats.avg.toFixed(1) : "—"}</div>
           <div style="font-size:15px;color:#7BCFFF;margin-top:5px;font-family:'Outfit',sans-serif;">out of 5.0 — ${overallCmmi?.label || ""}</div>
         </div>` : ""}
         <div style="border-left:1px solid rgba(255,255,255,.08);padding-left:44px;padding-bottom:6px;">
@@ -1701,7 +1738,7 @@ function Dashboard({ responses, onNavigate, user, onExport }) {
             <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: 1.2, color: "#7BCFFF", marginBottom: 10 }}>OVERALL MATURITY</div>
             {stats.avg ? (
               <>
-                <div style={{ fontSize: 44, fontWeight: 700, lineHeight: 1, fontFamily: "'Fraunces', serif" }}>{stats.avg.toFixed(1)}</div>
+                <div style={{ fontSize: 44, fontWeight: 700, lineHeight: 1, fontFamily: "'Fraunces', serif" }}>{stats.avg ? stats.avg.toFixed(1) : "—"}</div>
                 <div style={{ fontSize: 13, color: "#B3DEFF", marginTop: 5 }}>out of 5.0 — {overallCmmi?.label}</div>
                 <div style={{ marginTop: 10, background: "rgba(255,255,255,.1)", borderRadius: 4, height: 4 }}>
                   <div style={{ width: `${(stats.avg / 5) * 100}%`, background: "#19A3FC", height: 4, borderRadius: 4, transition: "width .6s ease" }} />
@@ -1988,7 +2025,7 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
         {label}
         {view !== "dashboard" && stats.areaStats[view]?.scored > 0 && (
           <span style={{ marginLeft: "auto", fontSize: 10, background: "rgba(255,255,255,.12)", borderRadius: 20, padding: "2px 7px", color: "rgba(255,255,255,.7)" }}>
-            {stats.areaStats[view].avg.toFixed(1)}
+            {stats.areaStats[view]?.avg ? stats.areaStats[view].avg.toFixed(1) : "—"}
           </span>
         )}
       </button>
@@ -2207,14 +2244,16 @@ Respond ONLY with a valid JSON object — no preamble, no markdown:
   if (screen === "login") return <LoginScreen onLogin={handleLogin} />;
 
   return (
-    <MainApp
-      user={user}
-      responses={responses}
-      analyzing={analyzing}
-      onGoalComment={handleGoalComment}
-      onQuestionComment={handleQuestionComment}
-      onAnalyze={handleAnalyze}
-      onLogout={handleLogout}
-    />
+    <ErrorBoundary>
+      <MainApp
+        user={user}
+        responses={responses}
+        analyzing={analyzing}
+        onGoalComment={handleGoalComment}
+        onQuestionComment={handleQuestionComment}
+        onAnalyze={handleAnalyze}
+        onLogout={handleLogout}
+      />
+    </ErrorBoundary>
   );
 }
