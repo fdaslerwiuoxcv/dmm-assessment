@@ -1144,8 +1144,37 @@ function recommendationsSectionHTML(recs) {
       </div>`;
   }).join("");
 
+  // Each rec card gets its own left/right padding matching the section, so it looks consistent
+  const paddedRecCards = recs.map((r, i) => {
+    const p = priorityColor(r.effort, r.value);
+    return `
+      <div style="margin-bottom:14px;padding:16px 52px;page-break-inside:avoid;">
+        <div style="padding:16px 18px;background:#fafafa;border:1.5px solid #e2e8f0;border-left:4px solid ${p.color};border-radius:10px;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:8px;">
+            <div style="display:flex;align-items:flex-start;gap:10px;flex:1;">
+              <span style="width:24px;height:24px;border-radius:50%;background:${p.color};color:white;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'Outfit',sans-serif;">${i+1}</span>
+              <div>
+                <div style="font-size:13.5px;font-weight:700;color:#0f172a;font-family:'Outfit',sans-serif;margin-bottom:4px;">${r.title}</div>
+                <div style="font-size:11px;color:#94a3b8;font-family:'Outfit',sans-serif;">${r.area}</div>
+              </div>
+            </div>
+            <span style="background:${p.bg};color:${p.color};border:1.5px solid ${p.color}40;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0;font-family:'Outfit',sans-serif;">${p.label}</span>
+          </div>
+          <p style="margin:0 0 10px;font-size:12.5px;color:#334155;line-height:1.65;font-family:'Outfit',sans-serif;">${r.description}</p>
+          <div style="background:white;border-radius:8px;padding:10px 14px;border:1px solid #e2e8f0;">
+            <div style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:1px;margin-bottom:4px;font-family:'Outfit',sans-serif;">BUSINESS VALUE</div>
+            <div style="font-size:12px;color:#334155;line-height:1.6;font-family:'Outfit',sans-serif;">${r.business_value}</div>
+          </div>
+          <div style="display:flex;gap:16px;margin-top:10px;">
+            <div style="font-size:11px;color:#64748b;font-family:'Outfit',sans-serif;">⚡ Effort: <strong style="color:#0f172a;">${effortLabel(r.effort)}</strong></div>
+            <div style="font-size:11px;color:#64748b;font-family:'Outfit',sans-serif;">💎 Value: <strong style="color:#0f172a;">${valueLabel(r.value)}</strong></div>
+          </div>
+        </div>
+      </div>`;
+  }).join("");
+
   return `
-    <div style="page-break-before:always;padding:44px 52px;">
+    <div style="page-break-before:always;padding:44px 52px 28px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;padding-bottom:20px;border-bottom:1.5px solid #f1f5f9;">
         ${nttLogoBlackHTML(24)}
         <span style="font-size:10px;font-weight:700;color:#cbd5e1;letter-spacing:2px;font-family:'Outfit',sans-serif;">CMMI DMM ASSESSMENT REPORT</span>
@@ -1154,12 +1183,11 @@ function recommendationsSectionHTML(recs) {
       <h2 style="font-family:'Fraunces',serif;font-size:30px;font-weight:700;color:#0f172a;margin:0 0 28px;">Prioritized Action Plan</h2>
 
       <!-- Payoff Matrix -->
-      <div style="margin-bottom:28px;padding:24px 28px;background:#f8fafc;border-radius:14px;border:1.5px solid #e2e8f0;">
+      <div style="page-break-inside:avoid;margin-bottom:8px;padding:24px 28px;background:#f8fafc;border-radius:14px;border:1.5px solid #e2e8f0;">
         <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin:0 0 16px;font-family:'Outfit',sans-serif;">VALUE vs. EFFORT PAYOFF MATRIX</p>
         <div style="display:flex;justify-content:center;">
           ${payoffMatrixSVG(recs, 560)}
         </div>
-        <!-- Legend -->
         <div style="display:flex;gap:18px;justify-content:center;margin-top:14px;flex-wrap:wrap;">
           ${[["#068941","#E0F5EC","Quick Win"],["#0072BC","#DAEEF9","Strategic Investment"],["#CC7700","#FFF5CC","Fill-in"],["#94a3b8","#f1f5f9","Deprioritize"]].map(([c,bg,l]) =>
             `<div style="display:flex;align-items:center;gap:6px;background:${bg};border-radius:20px;padding:4px 10px;">
@@ -1168,10 +1196,10 @@ function recommendationsSectionHTML(recs) {
             </div>`).join("")}
         </div>
       </div>
+    </div>
 
-      <!-- Recommendation cards -->
-      ${recCards}
-    </div>`;
+    <!-- Rec cards as siblings — no height-constraining wrapper, flow freely across pages -->
+    ${paddedRecCards}`;
 }
 
 // ─── PDF Report Builder ───────────────────────────────────────────────────────
@@ -1288,7 +1316,7 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
     </style>
 
     <!-- COVER: height:269mm = A4 297mm minus 14mm top+bottom margins, so it fills exactly one page -->
-    <div style="height:269mm;display:flex;flex-direction:column;justify-content:center;padding:56px 60px;background:linear-gradient(160deg,#070F26 0%,#0A1E3D 55%,#070F26 100%);page-break-after:always;">
+    <div style="height:269mm;display:flex;flex-direction:column;justify-content:center;padding:56px 60px;background:linear-gradient(160deg,#070F26 0%,#0A1E3D 55%,#070F26 100%);">
       <div style="margin-bottom:44px;">
         <div style="display:flex;align-items:center;gap:16px;margin-bottom:36px;">
           ${nttLogoWhiteHTML(32)}
