@@ -1484,37 +1484,11 @@ Calibrate effort and value scores realistically — not everything should be hig
 }
 
 // ─── Print Helper ─────────────────────────────────────────────────────────────
-function printReport(html) {
-  const fullHtml = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8"/>
-  <title>NTT DATA — CMMI DMM Assessment Report</title>
-  <style>
-    @media print {
-      @page { margin:14mm 12mm; size:A4; }
-      body { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
-    }
-    * { box-sizing:border-box; }
-    body { margin:0; padding:0; background:white; }
-  </style>
-</head>
-<body>
-${html}
-<script>
-  // Print after fonts and layout have fully settled
-  window.addEventListener('load', function() {
-    setTimeout(function() { window.print(); }, 1200);
-  });
-</script>
-</body>
-</html>`;
-
-  const blob = new Blob([fullHtml], { type: "text/html;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const win = window.open(url, "_blank");
-  if (!win) alert("Please allow popups for this site, then click Print/Export again.");
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
+// Simply calls window.print() — the @media print CSS already hides the app UI
+// and shows only #dmm-report-overlay, so the full report prints from the main
+// window with no iframe/blob/popup truncation issues.
+function printReport() {
+  window.print();
 }
 
 function ReportOverlay({ user, responses, onClose }) {
@@ -1541,9 +1515,11 @@ function ReportOverlay({ user, responses, onClose }) {
     style.id = "dmm-print-style";
     style.textContent = `
       @media print {
+        @page { margin:14mm 12mm; size:A4; }
         body > * { display: none !important; }
         #dmm-report-overlay { display: block !important; position: static !important; }
         #dmm-report-overlay .no-print { display: none !important; }
+        body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
       }
     `;
     document.head.appendChild(style);
@@ -1678,7 +1654,7 @@ function ReportOverlay({ user, responses, onClose }) {
         {/* Right */}
         <div style={{ display: "flex", gap: 10, flexShrink: 0 }}>
           <button
-            onClick={() => printReport(html)}
+            onClick={() => printReport()}
             disabled={status !== "ready"}
             style={{ display: "flex", alignItems: "center", gap: 8, background: status !== "ready" ? "rgba(0,114,188,.4)" : "linear-gradient(135deg,#0072BC,#009AA4)", border: "none", borderRadius: 9, padding: "9px 20px", color: "white", fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: status !== "ready" ? "not-allowed" : "pointer", opacity: status !== "ready" ? 0.6 : 1, whiteSpace: "nowrap" }}
           >
