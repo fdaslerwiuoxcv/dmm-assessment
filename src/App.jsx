@@ -1488,13 +1488,25 @@ Calibrate effort and value scores realistically — not everything should be hig
 }
 
 // ─── Print Helpers ────────────────────────────────────────────────────────────
-function openPrintWindow(html) {
+function dateStamp() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}${m}${day}`;
+}
+
+function openPrintWindow(html, title) {
   const full = `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
+<title>${title}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Fraunces:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet"/>
 <style>
   @media print { @page { margin:14mm 12mm; size:A4; } body { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; } }
-  * { box-sizing:border-box; } body { margin:0; padding:0; background:white; }
+  * { box-sizing:border-box; } body { margin:0; padding:0; background:white; font-family:'Outfit',sans-serif; }
 </style></head><body>${html}
-<script>window.addEventListener('load',function(){ setTimeout(function(){ window.print(); },1500); });<\/script>
+<script>window.addEventListener('load',function(){ setTimeout(function(){ window.print(); },2500); });<\/script>
 </body></html>`;
   const blob = new Blob([full], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -1504,7 +1516,7 @@ function openPrintWindow(html) {
 }
 
 // Full assessment report
-function printReport(html) { openPrintWindow(html); }
+function printReport(html) { openPrintWindow(html, `${dateStamp()}_NTT_DATA_Assessment`); }
 
 // Standalone recommendations PDF — simple flat HTML, no complex layout
 function printRecsOnly(recs, user) {
@@ -1524,20 +1536,20 @@ function printRecsOnly(recs, user) {
     return `<div style="margin:0 0 10px;padding:14px 16px;border-left:4px solid ${p.color};border-top:1px solid #e2e8f0;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;background:#fafafa;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
         <div style="display:flex;gap:8px;align-items:flex-start;flex:1;">
-          <span style="background:${p.color};color:white;font-size:10px;font-weight:700;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-family:Arial,sans-serif;">${i+1}</span>
+          <span style="background:${p.color};color:white;font-size:10px;font-weight:700;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'Outfit',sans-serif;">${i+1}</span>
           <div>
-            <div style="font-size:13px;font-weight:700;color:#0f172a;font-family:Arial,sans-serif;">${r.title}</div>
-            <div style="font-size:10px;color:#94a3b8;font-family:Arial,sans-serif;">${r.area}</div>
+            <div style="font-size:13px;font-weight:700;color:#0f172a;font-family:'Outfit',sans-serif;">${r.title}</div>
+            <div style="font-size:10px;color:#94a3b8;font-family:'Outfit',sans-serif;">${r.area}</div>
           </div>
         </div>
-        <span style="background:${p.bg};color:${p.color};font-size:10px;font-weight:700;padding:2px 8px;white-space:nowrap;font-family:Arial,sans-serif;">${p.label}</span>
+        <span style="background:${p.bg};color:${p.color};font-size:10px;font-weight:700;padding:2px 8px;white-space:nowrap;font-family:'Outfit',sans-serif;">${p.label}</span>
       </div>
-      <p style="margin:0 0 8px;font-size:11.5px;color:#334155;line-height:1.6;font-family:Arial,sans-serif;">${r.description}</p>
+      <p style="margin:0 0 8px;font-size:11.5px;color:#334155;line-height:1.6;font-family:'Outfit',sans-serif;">${r.description}</p>
       <div style="background:white;padding:7px 10px;border:1px solid #e2e8f0;margin-bottom:6px;">
-        <div style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:1px;margin-bottom:2px;font-family:Arial,sans-serif;">BUSINESS VALUE</div>
-        <div style="font-size:11px;color:#334155;line-height:1.5;font-family:Arial,sans-serif;">${r.business_value}</div>
+        <div style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:1px;margin-bottom:2px;font-family:'Outfit',sans-serif;">BUSINESS VALUE</div>
+        <div style="font-size:11px;color:#334155;line-height:1.5;font-family:'Outfit',sans-serif;">${r.business_value}</div>
       </div>
-      <div style="font-size:10px;color:#64748b;font-family:Arial,sans-serif;">Effort: <strong>${effortLabel(r.effort)}</strong> &nbsp; Value: <strong>${valueLabel(r.value)}</strong></div>
+      <div style="font-size:10px;color:#64748b;font-family:'Outfit',sans-serif;">Effort: <strong>${effortLabel(r.effort)}</strong> &nbsp; Value: <strong>${valueLabel(r.value)}</strong></div>
     </div>`;
   }).join("");
 
@@ -1550,12 +1562,12 @@ function printRecsOnly(recs, user) {
   ].map(([c,bg,l]) =>
     `<div style="display:inline-flex;align-items:center;gap:5px;background:${bg};padding:3px 9px;margin:2px;">
       <span style="width:9px;height:9px;background:${c};display:inline-block;flex-shrink:0;"></span>
-      <span style="font-size:10px;font-weight:700;color:${c};font-family:Arial,sans-serif;">${l}</span>
+      <span style="font-size:10px;font-weight:700;color:${c};font-family:'Outfit',sans-serif;">${l}</span>
     </div>`
   ).join("");
 
   const html = `
-    <div style="padding:48px 52px 24px;font-family:Arial,sans-serif;">
+    <div style="padding:48px 52px 24px;font-family:'Outfit',sans-serif;">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #e2e8f0;padding-bottom:16px;margin-bottom:28px;">
         <div style="font-size:11px;font-weight:700;color:#0072BC;letter-spacing:1px;">NTT DATA</div>
         <div style="font-size:10px;color:#94a3b8;letter-spacing:1.5px;font-weight:700;">CMMI DMM ASSESSMENT REPORT</div>
@@ -1564,14 +1576,14 @@ function printRecsOnly(recs, user) {
       <div style="font-size:26px;font-weight:700;color:#0f172a;margin-bottom:4px;">Prioritized Action Plan</div>
       <div style="font-size:12px;color:#64748b;margin-bottom:20px;">${user.org} &nbsp;·&nbsp; ${date}</div>
       <div style="padding:18px 20px;background:#f8fafc;border:1px solid #e2e8f0;margin-bottom:24px;">
-        <div style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin-bottom:12px;font-family:Arial,sans-serif;">VALUE vs. EFFORT PAYOFF MATRIX</div>
+        <div style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin-bottom:12px;font-family:'Outfit',sans-serif;">VALUE vs. EFFORT PAYOFF MATRIX</div>
         <div style="display:flex;justify-content:center;">${matrixSVG}</div>
         <div style="display:flex;flex-wrap:wrap;justify-content:center;margin-top:10px;">${legendHTML}</div>
       </div>
       ${cards}
     </div>`;
 
-  openPrintWindow(html);
+  openPrintWindow(html, `${dateStamp()}_NTT_DATA_Action_Plan`);
 }
 
 function ReportOverlay({ user, responses, onClose }) {
