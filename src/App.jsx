@@ -1318,14 +1318,10 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
         <span style="font-size:10px;font-weight:700;color:#cbd5e1;letter-spacing:2px;font-family:'Outfit',sans-serif;">CMMI DMM ASSESSMENT REPORT</span>
       </div>
       <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:2px;margin:0 0 6px;font-family:'Outfit',sans-serif;">EXECUTIVE SUMMARY</p>
-      <h2 style="font-family:'Fraunces',serif;font-size:30px;font-weight:700;color:#0f172a;margin:0 0 28px;">Assessment Overview</h2>
+      <h2 style="font-family:'Fraunces',serif;font-size:36px;font-weight:700;color:#0f172a;margin:0 0 28px;">Executive Assessment: Data Management Maturity</h2>
 
       ${aiSummary ? `
       <div style="margin-bottom:32px;padding:28px 32px;background:linear-gradient(135deg,#070F26,#005B96);border-radius:14px;color:white;">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;">
-          <span style="font-size:16px;">✦</span>
-          <span style="font-size:10px;font-weight:700;letter-spacing:2px;color:#7BCFFF;font-family:'Outfit',sans-serif;">AI-GENERATED ASSESSMENT NARRATIVE</span>
-        </div>
         <div style="font-size:13.5px;color:rgba(255,255,255,.88);line-height:1.85;font-family:'Outfit',sans-serif;">${aiSummary.replace(/\n\n/g, '</p><p style="margin:12px 0 0;font-size:13.5px;color:rgba(255,255,255,.88);line-height:1.85;font-family:Outfit,sans-serif;">').replace(/\n/g, '<br/>')}</div>
       </div>` : ""}
 
