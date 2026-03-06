@@ -1145,7 +1145,7 @@ function recommendationsSectionHTML(recs) {
   }).join("");
 
   return `
-    <div style="page-break-before:always;padding:44px 52px;">
+    <div class="page" style="padding:44px 52px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;padding-bottom:20px;border-bottom:1.5px solid #f1f5f9;">
         ${nttLogoBlackHTML(24)}
         <span style="font-size:10px;font-weight:700;color:#cbd5e1;letter-spacing:2px;font-family:'Outfit',sans-serif;">CMMI DMM ASSESSMENT REPORT</span>
@@ -1256,7 +1256,7 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
       </div>`;
     }).join("");
 
-    return `<div style="page-break-before:always;padding:44px 52px;">
+    return `<div class="page" style="padding:44px 52px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:1.5px solid #f1f5f9;">
         ${nttLogoBlackHTML(20)}
         <span style="font-size:10px;font-weight:700;color:#cbd5e1;letter-spacing:2px;font-family:'Outfit',sans-serif;">CMMI DMM ASSESSMENT REPORT</span>
@@ -1280,15 +1280,17 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
   return `
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Fraunces:wght@400;600;700&display=swap');
-      * { box-sizing:border-box; }
+      * { box-sizing:border-box; margin:0; padding:0; }
       @media print {
-        @page { margin:16mm 14mm; size:A4; }
+        @page { margin:0; size:A4; }
         body { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+        .page { page-break-after:always; page-break-inside:avoid; }
+        .page:last-of-type { page-break-after:auto; }
       }
     </style>
 
     <!-- COVER -->
-    <div style="min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:56px 60px;background:linear-gradient(160deg,#070F26 0%,#0A1E3D 55%,#070F26 100%);">
+    <div class="page" style="width:210mm;height:297mm;display:flex;flex-direction:column;justify-content:center;padding:56px 60px;background:linear-gradient(160deg,#070F26 0%,#0A1E3D 55%,#070F26 100%);">
       <div style="margin-bottom:44px;">
         <div style="display:flex;align-items:center;gap:16px;margin-bottom:36px;">
           ${nttLogoWhiteHTML(32)}
@@ -1318,7 +1320,7 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
     </div>
 
     <!-- EXECUTIVE SUMMARY -->
-    <div style="page-break-before:always;padding:44px 52px;">
+    <div class="page" style="padding:44px 52px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;padding-bottom:20px;border-bottom:1.5px solid #f1f5f9;">
         ${nttLogoBlackHTML(24)}
         <span style="font-size:10px;font-weight:700;color:#cbd5e1;letter-spacing:2px;font-family:'Outfit',sans-serif;">CMMI DMM ASSESSMENT REPORT</span>
