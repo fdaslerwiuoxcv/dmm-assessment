@@ -1488,36 +1488,16 @@ Calibrate effort and value scores realistically — not everything should be hig
 }
 
 // ─── Print Helper ─────────────────────────────────────────────────────────────
+// Injects HTML into #dmm-print-container which lives outside React root in
+// normal document flow — Safari can paginate to full height with no clipping.
 function printReport(html) {
-  const fullHtml = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8"/>
-  <title>NTT DATA — CMMI DMM Assessment Report</title>
-  <style>
-    @media print {
-      @page { margin:14mm 12mm; size:A4; }
-      body { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
-    }
-    * { box-sizing:border-box; }
-    body { margin:0; padding:0; background:white; overflow:visible !important; }
-    div { overflow:visible !important; }
-  </style>
-</head>
-<body>
-${html}
-<script>
-  window.addEventListener('load', function() {
-    setTimeout(function() { window.print(); }, 1500);
-  });
-<\/script>
-</body>
-</html>`;
-  const blob = new Blob([fullHtml], { type: "text/html;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const win = window.open(url, "_blank");
-  if (!win) alert("Please allow popups for this site, then click Print/Export again.");
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  const container = document.getElementById("dmm-print-container");
+  if (!container) { window.print(); return; }
+  container.innerHTML = html;
+  setTimeout(() => {
+    window.print();
+    setTimeout(() => { container.innerHTML = ""; }, 2000);
+  }, 300);
 }
 
 function ReportOverlay({ user, responses, onClose }) {
@@ -1540,19 +1520,6 @@ function ReportOverlay({ user, responses, onClose }) {
   };
 
   useEffect(() => {
-    const style = document.createElement("style");
-    style.id = "dmm-print-style";
-    style.textContent = `
-      @media print {
-        @page { margin:14mm 12mm; size:A4; }
-        body > * { display: none !important; }
-        #dmm-report-overlay { display: block !important; position: static !important; }
-        #dmm-report-overlay .no-print { display: none !important; }
-        body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-      }
-    `;
-    document.head.appendChild(style);
-
     // Render static report immediately so something is visible right away
     try {
       setHtml(buildReportHTML(user, responses, null, null));
