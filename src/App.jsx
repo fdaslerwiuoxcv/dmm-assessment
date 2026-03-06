@@ -1114,66 +1114,39 @@ function recommendationsSectionHTML(recs) {
     if (value < 3  && effort <= 3) return { color: "#CC7700", bg: "#FFF5CC", label: "Fill-in" };
     return { color: "#94a3b8", bg: "#f8fafc", label: "Deprioritize" };
   };
-
   const effortLabel = e => ["","Low","Low-Med","Medium","Med-High","High"][e] || "Medium";
   const valueLabel  = v => ["","Low","Low-Med","Medium","Med-High","High"][v] || "Medium";
 
-  const recCards = recs.map((r, i) => {
+  // Safari PDF engine reliable pattern:
+  // - No border-radius on block containers (creates clip region that stops paint)
+  // - No page-break-inside:avoid on multi-line blocks (causes PDF truncation)
+  // - Each card is a top-level <div> sibling with only left-border accent, no rounded box
+  const cards = recs.map((r, i) => {
     const p = priorityColor(r.effort, r.value);
-    return `<div style="margin-bottom:14px;padding:16px 18px;background:#fafafa;border:1.5px solid #e2e8f0;border-left:4px solid ${p.color};border-radius:10px;page-break-inside:avoid;">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:8px;">
-        <div style="display:flex;align-items:flex-start;gap:10px;flex:1;">
-          <span style="width:24px;height:24px;border-radius:50%;background:${p.color};color:white;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'Outfit',sans-serif;">${i+1}</span>
+    return `<div style="margin:0 52px 12px;padding:14px 16px;background:#fafafa;border:1px solid #e2e8f0;border-left:4px solid ${p.color};">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:6px;">
+        <div style="display:flex;align-items:flex-start;gap:8px;flex:1;">
+          <span style="width:22px;height:22px;background:${p.color};color:white;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'Outfit',sans-serif;">${i+1}</span>
           <div>
-            <div style="font-size:13.5px;font-weight:700;color:#0f172a;font-family:'Outfit',sans-serif;margin-bottom:4px;">${r.title}</div>
-            <div style="font-size:11px;color:#94a3b8;font-family:'Outfit',sans-serif;">${r.area}</div>
+            <div style="font-size:13px;font-weight:700;color:#0f172a;font-family:'Outfit',sans-serif;margin-bottom:2px;">${r.title}</div>
+            <div style="font-size:10px;color:#94a3b8;font-family:'Outfit',sans-serif;">${r.area}</div>
           </div>
         </div>
-        <span style="background:${p.bg};color:${p.color};border:1.5px solid ${p.color}40;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0;font-family:'Outfit',sans-serif;">${p.label}</span>
+        <span style="background:${p.bg};color:${p.color};padding:2px 9px;font-size:10px;font-weight:700;white-space:nowrap;flex-shrink:0;font-family:'Outfit',sans-serif;">${p.label}</span>
       </div>
-      <p style="margin:0 0 10px;font-size:12.5px;color:#334155;line-height:1.65;font-family:'Outfit',sans-serif;">${r.description}</p>
-      <div style="background:white;border-radius:8px;padding:10px 14px;border:1px solid #e2e8f0;margin-bottom:10px;">
-        <div style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:1px;margin-bottom:4px;font-family:'Outfit',sans-serif;">BUSINESS VALUE</div>
-        <div style="font-size:12px;color:#334155;line-height:1.6;font-family:'Outfit',sans-serif;">${r.business_value}</div>
+      <p style="margin:0 0 8px;font-size:12px;color:#334155;line-height:1.6;font-family:'Outfit',sans-serif;">${r.description}</p>
+      <div style="background:white;padding:8px 12px;border:1px solid #e2e8f0;margin-bottom:8px;">
+        <div style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:1px;margin-bottom:3px;font-family:'Outfit',sans-serif;">BUSINESS VALUE</div>
+        <div style="font-size:11px;color:#334155;line-height:1.55;font-family:'Outfit',sans-serif;">${r.business_value}</div>
       </div>
       <div style="display:flex;gap:16px;">
-        <div style="font-size:11px;color:#64748b;font-family:'Outfit',sans-serif;">⚡ Effort: <strong style="color:#0f172a;">${effortLabel(r.effort)}</strong></div>
-        <div style="font-size:11px;color:#64748b;font-family:'Outfit',sans-serif;">💎 Value: <strong style="color:#0f172a;">${valueLabel(r.value)}</strong></div>
+        <div style="font-size:11px;color:#64748b;font-family:'Outfit',sans-serif;">Effort: <strong style="color:#0f172a;">${effortLabel(r.effort)}</strong></div>
+        <div style="font-size:11px;color:#64748b;font-family:'Outfit',sans-serif;">Value: <strong style="color:#0f172a;">${valueLabel(r.value)}</strong></div>
       </div>
     </div>`;
-  }).join("");
-
-  // Wrap each rec card in its own padded sibling — never inside a tall parent
-  // container that Safari could clip at a page boundary.
-  const paddedCards = recs.map((r, i) => {
-    const p = priorityColor(r.effort, r.value);
-    return `<div style="padding:0 52px 14px;">
-      <div style="padding:16px 18px;background:#fafafa;border:1.5px solid #e2e8f0;border-left:4px solid ${p.color};border-radius:10px;page-break-inside:avoid;">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:8px;">
-          <div style="display:flex;align-items:flex-start;gap:10px;flex:1;">
-            <span style="width:24px;height:24px;border-radius:50%;background:${p.color};color:white;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'Outfit',sans-serif;">${i+1}</span>
-            <div>
-              <div style="font-size:13.5px;font-weight:700;color:#0f172a;font-family:'Outfit',sans-serif;margin-bottom:4px;">${r.title}</div>
-              <div style="font-size:11px;color:#94a3b8;font-family:'Outfit',sans-serif;">${r.area}</div>
-            </div>
-          </div>
-          <span style="background:${p.bg};color:${p.color};border:1.5px solid ${p.color}40;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0;font-family:'Outfit',sans-serif;">${p.label}</span>
-        </div>
-        <p style="margin:0 0 10px;font-size:12.5px;color:#334155;line-height:1.65;font-family:'Outfit',sans-serif;">${r.description}</p>
-        <div style="background:white;border-radius:8px;padding:10px 14px;border:1px solid #e2e8f0;margin-bottom:10px;">
-          <div style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:1px;margin-bottom:4px;font-family:'Outfit',sans-serif;">BUSINESS VALUE</div>
-          <div style="font-size:12px;color:#334155;line-height:1.6;font-family:'Outfit',sans-serif;">${r.business_value}</div>
-        </div>
-        <div style="display:flex;gap:16px;">
-          <div style="font-size:11px;color:#64748b;font-family:'Outfit',sans-serif;">⚡ Effort: <strong style="color:#0f172a;">${effortLabel(r.effort)}</strong></div>
-          <div style="font-size:11px;color:#64748b;font-family:'Outfit',sans-serif;">💎 Value: <strong style="color:#0f172a;">${valueLabel(r.value)}</strong></div>
-        </div>
-      </div>
-    </div>`;
-  }).join("");
+  }).join("\n");
 
   return `
-    <!-- Recs header + matrix: self-contained, no overflow risk -->
     <div style="page-break-before:always;padding:44px 52px 24px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;padding-bottom:20px;border-bottom:1.5px solid #f1f5f9;">
         ${nttLogoBlackHTML(24)}
@@ -1181,20 +1154,20 @@ function recommendationsSectionHTML(recs) {
       </div>
       <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:2px;margin:0 0 6px;font-family:'Outfit',sans-serif;">RECOMMENDATIONS</p>
       <h2 style="font-family:'Fraunces',serif;font-size:30px;font-weight:700;color:#0f172a;margin:0 0 24px;">Prioritized Action Plan</h2>
-      <div style="page-break-inside:avoid;padding:24px 28px;background:#f8fafc;border-radius:14px;border:1.5px solid #e2e8f0;">
-        <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin:0 0 16px;font-family:'Outfit',sans-serif;">VALUE vs. EFFORT PAYOFF MATRIX</p>
-        <div style="display:flex;justify-content:center;">${payoffMatrixSVG(recs, 480)}</div>
-        <div style="display:flex;gap:18px;justify-content:center;margin-top:14px;flex-wrap:wrap;">
+      <div style="padding:20px 24px;background:#f8fafc;border:1px solid #e2e8f0;margin-bottom:4px;">
+        <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin:0 0 14px;font-family:'Outfit',sans-serif;">VALUE vs. EFFORT PAYOFF MATRIX</p>
+        <div style="display:flex;justify-content:center;">${payoffMatrixSVG(recs, 460)}</div>
+        <div style="display:flex;gap:14px;justify-content:center;margin-top:12px;flex-wrap:wrap;">
           ${[["#068941","#E0F5EC","Quick Win"],["#0072BC","#DAEEF9","Strategic Investment"],["#CC7700","#FFF5CC","Fill-in"],["#94a3b8","#f1f5f9","Deprioritize"]].map(([c,bg,l]) =>
-            `<div style="display:flex;align-items:center;gap:6px;background:${bg};border-radius:20px;padding:4px 10px;">
-              <span style="width:10px;height:10px;border-radius:50%;background:${c};display:inline-block;"></span>
+            `<div style="display:flex;align-items:center;gap:5px;background:${bg};padding:3px 9px;">
+              <span style="width:9px;height:9px;background:${c};display:inline-block;"></span>
               <span style="font-size:10px;font-weight:600;color:${c};font-family:'Outfit',sans-serif;">${l}</span>
             </div>`).join("")}
         </div>
       </div>
     </div>
-    <!-- Each rec card is a top-level sibling — no tall ancestor for Safari to clip -->
-    ${paddedCards}`;
+    ${cards}
+    <div style="height:32px;"></div>`;
 }
 
 // ─── PDF Report Builder ───────────────────────────────────────────────────────
