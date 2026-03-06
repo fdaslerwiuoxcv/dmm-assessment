@@ -1343,24 +1343,13 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
 async function generateAISummary(user, responses) {
   const stats = getStats(responses);
 
-  // Build a compact digest of all scored goals for the prompt
+  // Compact digest: area averages + topic scores only (no full goal text or rationales)
   const digest = Object.entries(AREAS).map(([aName, area]) => {
-    const topicLines = area.topics.map((topic, tIdx) => {
-      const scoredGoals = topic.goals
-        .map((goal, gIdx) => {
-          const r = responses[rKey(aName, tIdx, "goal", gIdx)];
-          if (!r?.score) return null;
-          return `  • [${r.score.toFixed(1)}/5] ${goal}\n    Rationale: ${r.rationale || "No rationale recorded."}`;
-        })
-        .filter(Boolean);
-      if (scoredGoals.length === 0) return null;
-      return `  Topic: ${topic.name}\n${scoredGoals.join("\n")}`;
-    }).filter(Boolean);
-
-    if (topicLines.length === 0) return null;
     const ts = getTopicScores(aName, responses).filter(t => t.score > 0);
-    const avg = ts.length > 0 ? (ts.reduce((a, b) => a + b.score, 0) / ts.length).toFixed(1) : "N/A";
-    return `AREA: ${aName} (avg: ${avg}/5)\n${topicLines.join("\n")}`;
+    if (ts.length === 0) return null;
+    const avg = (ts.reduce((a, b) => a + b.score, 0) / ts.length).toFixed(1);
+    const topicLines = ts.map(t => `  • ${t.name}: ${t.score.toFixed(1)}/5`).join("\n");
+    return `${aName} (avg ${avg}/5):\n${topicLines}`;
   }).filter(Boolean).join("\n\n");
 
   const overallAvg = stats.avg ? stats.avg.toFixed(1) : "N/A";
@@ -1370,7 +1359,7 @@ async function generateAISummary(user, responses) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "claude-sonnet-4-5",
-      max_tokens: 1000,
+      max_tokens: 800,
       messages: [{
         role: "user",
         content: `You are a senior data governance advisor preparing a formal executive assessment narrative for a client report. Based on the CMMI DMM assessment results below, write a polished 3–4 paragraph executive summary in natural language.
@@ -1518,21 +1507,24 @@ function ReportOverlay({ user, responses, onClose }) {
       return;
     }
 
-    // AI calls in parallel — update report when done
+    // AI calls in parallel — allSettled captures both successes and failures
     Promise.allSettled([
-      generateAISummary(user, responses).catch(e => { console.error("AI summary failed:", e); return null; }),
-      generateRecommendations(user, responses).catch(e => { console.error("AI recs failed:", e); return null; }),
+      generateAISummary(user, responses),
+      generateRecommendations(user, responses),
     ]).then(([sRes, rRes]) => {
-      const summary = sRes.status === "fulfilled" ? sRes.value : null;
-      const recs    = rRes.status === "fulfilled"  ? rRes.value  : null;
+      const summary = (sRes.status === "fulfilled" && sRes.value) ? sRes.value : null;
+      const recs    = (rRes.status === "fulfilled" && rRes.value)  ? rRes.value  : null;
 
-      // If both AI calls returned null, surface the actual errors
-      if (!summary && !recs) {
-        const sErr = sRes.status === "rejected" ? sRes.reason?.message : "returned empty";
-        const rErr = rRes.status === "rejected" ? rRes.reason?.message : "returned empty";
-        const msg = sErr || rErr || "unknown error";
-        console.error("Both AI calls failed:", sErr, rErr);
-        setAiError(msg);
+      // Log individual failures regardless of whether the other succeeded
+      if (sRes.status === "rejected") {
+        console.error("AI summary error:", sRes.reason?.message || sRes.reason);
+        setAiError(`Summary failed: ${sRes.reason?.message || sRes.reason || "unknown"}`);
+      } else if (!sRes.value) {
+        console.error("AI summary returned empty");
+        setAiError("Summary returned empty — check Netlify function logs");
+      }
+      if (rRes.status === "rejected") {
+        console.error("AI recs error:", rRes.reason?.message || rRes.reason);
       }
 
       summaryRef.current = summary;
