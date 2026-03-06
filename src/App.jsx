@@ -1265,7 +1265,7 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
             <div style="flex-shrink:0;padding-top:1px;">${badge(r.score)}</div>
           </div>
           ${r.comment ? `<div style="margin-top:9px;padding:8px 11px;background:#f8fafc;border-left:2.5px solid #e2e8f0;border-radius:0 6px 6px 0;font-size:12px;color:#475569;line-height:1.6;font-family:'Outfit',sans-serif;"><span style="display:block;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1px;margin-bottom:4px;">COMMENT</span>${r.comment}</div>` : ""}
-          ${r.rationale ? `<div style="margin-top:8px;padding:8px 11px;background:${C[lvl]?.bg};border-left:3px solid ${C[lvl]?.color};border-radius:0 6px 6px 0;font-size:12px;color:#334155;line-height:1.6;font-family:'Outfit',sans-serif;"><span style="display:block;font-size:10px;font-weight:700;color:${C[lvl]?.color};letter-spacing:1px;margin-bottom:4px;">AI RATIONALE</span>${r.rationale}</div>` : ""}
+          ${r.rationale ? `<div style="margin-top:8px;padding:8px 11px;background:${C[lvl]?.bg};border-left:3px solid ${C[lvl]?.color};border-radius:0 6px 6px 0;font-size:12px;color:#334155;line-height:1.6;font-family:'Outfit',sans-serif;"><span style="display:block;font-size:10px;font-weight:700;color:${C[lvl]?.color};letter-spacing:1px;margin-bottom:4px;">RATIONALE</span>${r.rationale}</div>` : ""}
         </div>`;
       });
 
@@ -1315,8 +1315,8 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
       }
     </style>
 
-    <!-- COVER: height:269mm = A4 297mm minus 14mm top+bottom margins, so it fills exactly one page -->
-    <div style="height:269mm;display:flex;flex-direction:column;justify-content:center;padding:56px 60px;background:linear-gradient(160deg,#070F26 0%,#0A1E3D 55%,#070F26 100%);">
+    <!-- COVER -->
+    <div style="page-break-after:always;display:flex;flex-direction:column;justify-content:center;padding:56px 60px;min-height:100%;background:linear-gradient(160deg,#070F26 0%,#0A1E3D 55%,#070F26 100%);">
       <div style="margin-bottom:44px;">
         <div style="display:flex;align-items:center;gap:16px;margin-bottom:36px;">
           ${nttLogoWhiteHTML(32)}
@@ -1346,7 +1346,7 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
     </div>
 
     <!-- EXECUTIVE SUMMARY -->
-    <div style="page-break-before:always;padding:44px 52px;">
+    <div style="padding:44px 52px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;padding-bottom:20px;border-bottom:1.5px solid #f1f5f9;">
         ${nttLogoBlackHTML(24)}
         <span style="font-size:10px;font-weight:700;color:#cbd5e1;letter-spacing:2px;font-family:'Outfit',sans-serif;">CMMI DMM ASSESSMENT REPORT</span>
@@ -1520,16 +1520,10 @@ Calibrate effort and value scores realistically — not everything should be hig
 }
 
 // ─── Print Helper ─────────────────────────────────────────────────────────────
-// Uses window.open — iframes clip content at their viewport height, causing
-// truncated PDFs. A new window has no height limit and paginates the full doc.
+// Uses a Blob URL opened in a new tab — the most reliable cross-browser approach.
+// document.write() can truncate long documents; a Blob URL renders the full HTML.
 function printReport(html) {
-  const printWindow = window.open("", "_blank", "width=900,height=700");
-  if (!printWindow) {
-    alert("Please allow popups for this site to export the PDF.");
-    return;
-  }
-
-  printWindow.document.write(`<!DOCTYPE html>
+  const fullHtml = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8"/>
@@ -1544,26 +1538,22 @@ function printReport(html) {
   </style>
 </head>
 <body>${html}</body>
-</html>`);
-  printWindow.document.close();
+</html>`;
 
-  // Wait for fonts/images to load before printing
-  printWindow.onload = () => {
-    setTimeout(() => {
-      printWindow.focus();
-      printWindow.print();
-      setTimeout(() => printWindow.close(), 1000);
-    }, 800);
-  };
+  const blob = new Blob([fullHtml], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
 
-  // Fallback if onload doesn't fire (some browsers)
-  setTimeout(() => {
-    if (!printWindow.closed) {
-      printWindow.focus();
-      printWindow.print();
-      setTimeout(() => printWindow.close(), 1000);
-    }
-  }, 2500);
+  if (!win) {
+    // Popup blocked — fall back to same-tab approach
+    const a = document.createElement("a");
+    a.href = url;
+    a.target = "_blank";
+    a.click();
+  }
+
+  // Revoke blob URL after a generous delay so the window has time to load
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
 function ReportOverlay({ user, responses, onClose }) {
