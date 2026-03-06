@@ -1929,9 +1929,16 @@ function QuestionCard({ qNum, qText, comment, onCommentChange }) {
 function AssessmentView({ areaName, responses, analyzing, onGoalComment, onQuestionComment, onAnalyze }) {
   const area = AREAS[areaName];
   const [activeTopic, setActiveTopic] = useState(0);
-  const topic = area.topics[activeTopic];
 
+  // Reset to first topic whenever the area changes — prevents index-out-of-bounds crash
+  // when switching from an area with more topics to one with fewer
+  useEffect(() => { setActiveTopic(0); }, [areaName]);
+
+  const topic = area?.topics?.[activeTopic];
   const stats = getStats(responses).areaStats[areaName];
+
+  // Guard: if area or topic hasn't resolved yet, render nothing
+  if (!area || !topic) return null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", fontFamily: "'Outfit', sans-serif" }}>
