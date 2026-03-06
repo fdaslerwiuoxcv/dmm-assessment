@@ -1115,79 +1115,45 @@ function recommendationsSectionHTML(recs) {
     return { color: "#94a3b8", bg: "#f8fafc", label: "Deprioritize" };
   };
 
-  const effortLabel  = e => ["","Low","Low-Med","Medium","Med-High","High"][e] || "Medium";
-  const valueLabel   = v => ["","Low","Low-Med","Medium","Med-High","High"][v] || "Medium";
+  const effortLabel = e => ["","Low","Low-Med","Medium","Med-High","High"][e] || "Medium";
+  const valueLabel  = v => ["","Low","Low-Med","Medium","Med-High","High"][v] || "Medium";
 
   const recCards = recs.map((r, i) => {
     const p = priorityColor(r.effort, r.value);
-    return `
-      <div style="margin-bottom:14px;padding:16px 18px;background:#fafafa;border:1.5px solid #e2e8f0;border-left:4px solid ${p.color};border-radius:10px;page-break-inside:avoid;">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:8px;">
-          <div style="display:flex;align-items:flex-start;gap:10px;flex:1;">
-            <span style="width:24px;height:24px;border-radius:50%;background:${p.color};color:white;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'Outfit',sans-serif;">${i+1}</span>
-            <div>
-              <div style="font-size:13.5px;font-weight:700;color:#0f172a;font-family:'Outfit',sans-serif;margin-bottom:4px;">${r.title}</div>
-              <div style="font-size:11px;color:#94a3b8;font-family:'Outfit',sans-serif;">${r.area}</div>
-            </div>
-          </div>
-          <span style="background:${p.bg};color:${p.color};border:1.5px solid ${p.color}40;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0;font-family:'Outfit',sans-serif;">${p.label}</span>
-        </div>
-        <p style="margin:0 0 10px;font-size:12.5px;color:#334155;line-height:1.65;font-family:'Outfit',sans-serif;">${r.description}</p>
-        <div style="background:white;border-radius:8px;padding:10px 14px;border:1px solid #e2e8f0;">
-          <div style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:1px;margin-bottom:4px;font-family:'Outfit',sans-serif;">BUSINESS VALUE</div>
-          <div style="font-size:12px;color:#334155;line-height:1.6;font-family:'Outfit',sans-serif;">${r.business_value}</div>
-        </div>
-        <div style="display:flex;gap:16px;margin-top:10px;">
-          <div style="font-size:11px;color:#64748b;font-family:'Outfit',sans-serif;">⚡ Effort: <strong style="color:#0f172a;">${effortLabel(r.effort)}</strong></div>
-          <div style="font-size:11px;color:#64748b;font-family:'Outfit',sans-serif;">💎 Value: <strong style="color:#0f172a;">${valueLabel(r.value)}</strong></div>
-        </div>
-      </div>`;
-  }).join("");
-
-  // Each rec card gets its own left/right padding matching the section, so it looks consistent
-  const paddedRecCards = recs.map((r, i) => {
-    const p = priorityColor(r.effort, r.value);
-    return `
-      <div style="margin-bottom:14px;padding:16px 52px;page-break-inside:avoid;">
-        <div style="padding:16px 18px;background:#fafafa;border:1.5px solid #e2e8f0;border-left:4px solid ${p.color};border-radius:10px;">
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:8px;">
-            <div style="display:flex;align-items:flex-start;gap:10px;flex:1;">
-              <span style="width:24px;height:24px;border-radius:50%;background:${p.color};color:white;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'Outfit',sans-serif;">${i+1}</span>
-              <div>
-                <div style="font-size:13.5px;font-weight:700;color:#0f172a;font-family:'Outfit',sans-serif;margin-bottom:4px;">${r.title}</div>
-                <div style="font-size:11px;color:#94a3b8;font-family:'Outfit',sans-serif;">${r.area}</div>
-              </div>
-            </div>
-            <span style="background:${p.bg};color:${p.color};border:1.5px solid ${p.color}40;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0;font-family:'Outfit',sans-serif;">${p.label}</span>
-          </div>
-          <p style="margin:0 0 10px;font-size:12.5px;color:#334155;line-height:1.65;font-family:'Outfit',sans-serif;">${r.description}</p>
-          <div style="background:white;border-radius:8px;padding:10px 14px;border:1px solid #e2e8f0;">
-            <div style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:1px;margin-bottom:4px;font-family:'Outfit',sans-serif;">BUSINESS VALUE</div>
-            <div style="font-size:12px;color:#334155;line-height:1.6;font-family:'Outfit',sans-serif;">${r.business_value}</div>
-          </div>
-          <div style="display:flex;gap:16px;margin-top:10px;">
-            <div style="font-size:11px;color:#64748b;font-family:'Outfit',sans-serif;">⚡ Effort: <strong style="color:#0f172a;">${effortLabel(r.effort)}</strong></div>
-            <div style="font-size:11px;color:#64748b;font-family:'Outfit',sans-serif;">💎 Value: <strong style="color:#0f172a;">${valueLabel(r.value)}</strong></div>
+    return `<div style="margin-bottom:14px;padding:16px 18px;background:#fafafa;border:1.5px solid #e2e8f0;border-left:4px solid ${p.color};border-radius:10px;page-break-inside:avoid;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:8px;">
+        <div style="display:flex;align-items:flex-start;gap:10px;flex:1;">
+          <span style="width:24px;height:24px;border-radius:50%;background:${p.color};color:white;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'Outfit',sans-serif;">${i+1}</span>
+          <div>
+            <div style="font-size:13.5px;font-weight:700;color:#0f172a;font-family:'Outfit',sans-serif;margin-bottom:4px;">${r.title}</div>
+            <div style="font-size:11px;color:#94a3b8;font-family:'Outfit',sans-serif;">${r.area}</div>
           </div>
         </div>
-      </div>`;
+        <span style="background:${p.bg};color:${p.color};border:1.5px solid ${p.color}40;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0;font-family:'Outfit',sans-serif;">${p.label}</span>
+      </div>
+      <p style="margin:0 0 10px;font-size:12.5px;color:#334155;line-height:1.65;font-family:'Outfit',sans-serif;">${r.description}</p>
+      <div style="background:white;border-radius:8px;padding:10px 14px;border:1px solid #e2e8f0;margin-bottom:10px;">
+        <div style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:1px;margin-bottom:4px;font-family:'Outfit',sans-serif;">BUSINESS VALUE</div>
+        <div style="font-size:12px;color:#334155;line-height:1.6;font-family:'Outfit',sans-serif;">${r.business_value}</div>
+      </div>
+      <div style="display:flex;gap:16px;">
+        <div style="font-size:11px;color:#64748b;font-family:'Outfit',sans-serif;">⚡ Effort: <strong style="color:#0f172a;">${effortLabel(r.effort)}</strong></div>
+        <div style="font-size:11px;color:#64748b;font-family:'Outfit',sans-serif;">💎 Value: <strong style="color:#0f172a;">${valueLabel(r.value)}</strong></div>
+      </div>
+    </div>`;
   }).join("");
 
   return `
-    <div style="page-break-before:always;padding:44px 52px 28px;">
+    <div style="page-break-before:always;padding:44px 52px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;padding-bottom:20px;border-bottom:1.5px solid #f1f5f9;">
         ${nttLogoBlackHTML(24)}
         <span style="font-size:10px;font-weight:700;color:#cbd5e1;letter-spacing:2px;font-family:'Outfit',sans-serif;">CMMI DMM ASSESSMENT REPORT</span>
       </div>
       <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:2px;margin:0 0 6px;font-family:'Outfit',sans-serif;">RECOMMENDATIONS</p>
       <h2 style="font-family:'Fraunces',serif;font-size:30px;font-weight:700;color:#0f172a;margin:0 0 28px;">Prioritized Action Plan</h2>
-
-      <!-- Payoff Matrix -->
-      <div style="page-break-inside:avoid;margin-bottom:8px;padding:24px 28px;background:#f8fafc;border-radius:14px;border:1.5px solid #e2e8f0;">
+      <div style="page-break-inside:avoid;margin-bottom:24px;padding:24px 28px;background:#f8fafc;border-radius:14px;border:1.5px solid #e2e8f0;">
         <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin:0 0 16px;font-family:'Outfit',sans-serif;">VALUE vs. EFFORT PAYOFF MATRIX</p>
-        <div style="display:flex;justify-content:center;">
-          ${payoffMatrixSVG(recs, 560)}
-        </div>
+        <div style="display:flex;justify-content:center;">${payoffMatrixSVG(recs, 480)}</div>
         <div style="display:flex;gap:18px;justify-content:center;margin-top:14px;flex-wrap:wrap;">
           ${[["#068941","#E0F5EC","Quick Win"],["#0072BC","#DAEEF9","Strategic Investment"],["#CC7700","#FFF5CC","Fill-in"],["#94a3b8","#f1f5f9","Deprioritize"]].map(([c,bg,l]) =>
             `<div style="display:flex;align-items:center;gap:6px;background:${bg};border-radius:20px;padding:4px 10px;">
@@ -1196,10 +1162,8 @@ function recommendationsSectionHTML(recs) {
             </div>`).join("")}
         </div>
       </div>
-    </div>
-
-    <!-- Rec cards as siblings — no height-constraining wrapper, flow freely across pages -->
-    ${paddedRecCards}`;
+      ${recCards}
+    </div>`;
 }
 
 // ─── PDF Report Builder ───────────────────────────────────────────────────────
@@ -1316,32 +1280,32 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
     </style>
 
     <!-- COVER -->
-    <div style="page-break-after:always;display:flex;flex-direction:column;justify-content:center;padding:56px 60px;min-height:100%;background:linear-gradient(160deg,#070F26 0%,#0A1E3D 55%,#070F26 100%);">
+    <div style="page-break-after:always;display:flex;flex-direction:column;justify-content:center;padding:56px 60px;min-height:100%;background:white;">
       <div style="margin-bottom:44px;">
         <div style="display:flex;align-items:center;gap:16px;margin-bottom:36px;">
-          ${nttLogoWhiteHTML(32)}
-          <div style="width:1px;height:32px;background:rgba(255,255,255,.15);"></div>
-          <span style="color:rgba(165,180,252,.7);font-size:11px;font-weight:700;letter-spacing:2px;font-family:'Outfit',sans-serif;">CMMI DMM ASSESSMENT REPORT</span>
+          ${nttLogoBlackHTML(32)}
+          <div style="width:1px;height:32px;background:#e2e8f0;"></div>
+          <span style="color:#94a3b8;font-size:11px;font-weight:700;letter-spacing:2px;font-family:'Outfit',sans-serif;">CMMI DMM ASSESSMENT REPORT</span>
         </div>
-        <h1 style="font-family:'Fraunces',serif;font-size:48px;font-weight:700;color:white;line-height:1.1;margin:0 0 10px;">${user.org}</h1>
-        <h2 style="font-family:'Fraunces',serif;font-size:24px;font-weight:400;color:#19A3FC;font-style:italic;margin:0;">Data Management Maturity Evaluation</h2>
+        <h1 style="font-family:'Fraunces',serif;font-size:48px;font-weight:700;color:#0f172a;line-height:1.1;margin:0 0 10px;">${user.org}</h1>
+        <h2 style="font-family:'Fraunces',serif;font-size:24px;font-weight:400;color:#0072BC;font-style:italic;margin:0;">Data Management Maturity Evaluation</h2>
       </div>
       <div style="display:flex;gap:44px;margin-bottom:56px;align-items:flex-end;">
         ${stats.avg ? `<div>
-          <div style="font-size:10px;color:rgba(255,255,255,.3);font-weight:600;letter-spacing:1.5px;margin-bottom:6px;font-family:'Outfit',sans-serif;">OVERALL MATURITY SCORE</div>
-          <div style="font-family:'Fraunces',serif;font-size:68px;font-weight:700;color:white;line-height:1;">${stats.avg ? stats.avg.toFixed(1) : "—"}</div>
-          <div style="font-size:15px;color:#7BCFFF;margin-top:5px;font-family:'Outfit',sans-serif;">out of 5.0 — ${overallCmmi?.label || ""}</div>
+          <div style="font-size:10px;color:#94a3b8;font-weight:600;letter-spacing:1.5px;margin-bottom:6px;font-family:'Outfit',sans-serif;">OVERALL MATURITY SCORE</div>
+          <div style="font-family:'Fraunces',serif;font-size:68px;font-weight:700;color:#0f172a;line-height:1;">${stats.avg ? stats.avg.toFixed(1) : "—"}</div>
+          <div style="font-size:15px;color:#0072BC;margin-top:5px;font-family:'Outfit',sans-serif;">out of 5.0 — ${overallCmmi?.label || ""}</div>
         </div>` : ""}
-        <div style="border-left:1px solid rgba(255,255,255,.08);padding-left:44px;padding-bottom:6px;">
-          <div style="font-size:10px;color:rgba(255,255,255,.3);font-weight:600;letter-spacing:1.5px;margin-bottom:10px;font-family:'Outfit',sans-serif;">ASSESSMENT COVERAGE</div>
-          <div style="font-size:30px;font-weight:700;color:white;font-family:'Outfit',sans-serif;">${stats.scoredGoals}<span style="font-size:15px;color:rgba(255,255,255,.3);font-weight:400;"> / ${stats.totalGoals} goals</span></div>
-          <div style="font-size:13px;color:rgba(255,255,255,.35);margin-top:3px;font-family:'Outfit',sans-serif;">${stats.pct}% complete</div>
+        <div style="border-left:1px solid #e2e8f0;padding-left:44px;padding-bottom:6px;">
+          <div style="font-size:10px;color:#94a3b8;font-weight:600;letter-spacing:1.5px;margin-bottom:10px;font-family:'Outfit',sans-serif;">ASSESSMENT COVERAGE</div>
+          <div style="font-size:30px;font-weight:700;color:#0f172a;font-family:'Outfit',sans-serif;">${stats.scoredGoals}<span style="font-size:15px;color:#94a3b8;font-weight:400;"> / ${stats.totalGoals} goals</span></div>
+          <div style="font-size:13px;color:#94a3b8;margin-top:3px;font-family:'Outfit',sans-serif;">${stats.pct}% complete</div>
         </div>
       </div>
-      <div style="border-top:1px solid rgba(255,255,255,.08);padding-top:28px;display:flex;gap:44px;">
-        <div><div style="font-size:9px;color:rgba(255,255,255,.22);letter-spacing:1.5px;margin-bottom:4px;font-family:'Outfit',sans-serif;">PREPARED BY</div><div style="font-size:14px;color:rgba(255,255,255,.8);font-weight:500;font-family:'Outfit',sans-serif;">${user.name}</div>${user.role?`<div style="font-size:11px;color:rgba(165,180,252,.45);font-family:'Outfit',sans-serif;">${user.role}</div>`:""}</div>
-        <div><div style="font-size:9px;color:rgba(255,255,255,.22);letter-spacing:1.5px;margin-bottom:4px;font-family:'Outfit',sans-serif;">DATE</div><div style="font-size:14px;color:rgba(255,255,255,.8);font-weight:500;font-family:'Outfit',sans-serif;">${date}</div></div>
-        <div><div style="font-size:9px;color:rgba(255,255,255,.22);letter-spacing:1.5px;margin-bottom:4px;font-family:'Outfit',sans-serif;">FRAMEWORK</div><div style="font-size:14px;color:rgba(255,255,255,.8);font-weight:500;font-family:'Outfit',sans-serif;">CMMI DMM</div></div>
+      <div style="border-top:1px solid #e2e8f0;padding-top:28px;display:flex;gap:44px;">
+        <div><div style="font-size:9px;color:#94a3b8;letter-spacing:1.5px;margin-bottom:4px;font-family:'Outfit',sans-serif;">PREPARED BY</div><div style="font-size:14px;color:#0f172a;font-weight:500;font-family:'Outfit',sans-serif;">${user.name}</div>${user.role?`<div style="font-size:11px;color:#64748b;font-family:'Outfit',sans-serif;">${user.role}</div>`:""}</div>
+        <div><div style="font-size:9px;color:#94a3b8;letter-spacing:1.5px;margin-bottom:4px;font-family:'Outfit',sans-serif;">DATE</div><div style="font-size:14px;color:#0f172a;font-weight:500;font-family:'Outfit',sans-serif;">${date}</div></div>
+        <div><div style="font-size:9px;color:#94a3b8;letter-spacing:1.5px;margin-bottom:4px;font-family:'Outfit',sans-serif;">FRAMEWORK</div><div style="font-size:14px;color:#0f172a;font-weight:500;font-family:'Outfit',sans-serif;">CMMI DMM</div></div>
       </div>
     </div>
 
@@ -1520,8 +1484,6 @@ Calibrate effort and value scores realistically — not everything should be hig
 }
 
 // ─── Print Helper ─────────────────────────────────────────────────────────────
-// Uses a Blob URL opened in a new tab — the most reliable cross-browser approach.
-// document.write() can truncate long documents; a Blob URL renders the full HTML.
 function printReport(html) {
   const fullHtml = `<!DOCTYPE html>
 <html>
@@ -1537,23 +1499,22 @@ function printReport(html) {
     body { margin:0; padding:0; background:white; }
   </style>
 </head>
-<body>${html}</body>
+<body>
+${html}
+<script>
+  // Print after fonts and layout have fully settled
+  window.addEventListener('load', function() {
+    setTimeout(function() { window.print(); }, 1200);
+  });
+</script>
+</body>
 </html>`;
 
   const blob = new Blob([fullHtml], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const win = window.open(url, "_blank");
-
-  if (!win) {
-    // Popup blocked — fall back to same-tab approach
-    const a = document.createElement("a");
-    a.href = url;
-    a.target = "_blank";
-    a.click();
-  }
-
-  // Revoke blob URL after a generous delay so the window has time to load
-  setTimeout(() => URL.revokeObjectURL(url), 30000);
+  if (!win) alert("Please allow popups for this site, then click Print/Export again.");
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
 function ReportOverlay({ user, responses, onClose }) {
