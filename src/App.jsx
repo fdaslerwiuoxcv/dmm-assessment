@@ -1369,7 +1369,7 @@ async function generateAISummary(user, responses) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-5",
       max_tokens: 1000,
       messages: [{
         role: "user",
@@ -1396,7 +1396,9 @@ Write the narrative with these guidelines:
   });
 
   const data = await response.json();
-  return (data.content || []).map(c => c.text || "").join("").trim();
+  if (data.error) throw new Error(`Anthropic error: ${data.error.message || JSON.stringify(data.error)}`);
+  if (!data.content) throw new Error(`Unexpected response: ${JSON.stringify(data)}`);
+  return data.content.map(c => c.text || "").join("").trim();
 }
 
 async function generateRecommendations(user, responses) {
@@ -1413,7 +1415,7 @@ async function generateRecommendations(user, responses) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-5",
       max_tokens: 2000,
       messages: [{
         role: "user",
@@ -1441,8 +1443,9 @@ Calibrate effort and value scores realistically — not everything should be hig
   });
 
   const data = await response.json();
-  const raw = (data.content || []).map(c => c.text || "").join("").trim();
-  // Strip any accidental markdown fences
+  if (data.error) throw new Error(`Anthropic error: ${data.error.message || JSON.stringify(data.error)}`);
+  if (!data.content) throw new Error(`Unexpected response: ${JSON.stringify(data)}`);
+  const raw = data.content.map(c => c.text || "").join("").trim();
   const clean = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
   return JSON.parse(clean);
 }
@@ -1523,10 +1526,13 @@ function ReportOverlay({ user, responses, onClose }) {
       const summary = sRes.status === "fulfilled" ? sRes.value : null;
       const recs    = rRes.status === "fulfilled"  ? rRes.value  : null;
 
-      // If both AI calls returned null, surface a visible warning
+      // If both AI calls returned null, surface the actual errors
       if (!summary && !recs) {
-        console.error("Both AI calls failed — check ANTHROPIC_API_KEY in Netlify environment variables.");
-        setAiError("AI unavailable — check Anthropic API key in Netlify environment variables.");
+        const sErr = sRes.status === "rejected" ? sRes.reason?.message : "returned empty";
+        const rErr = rRes.status === "rejected" ? rRes.reason?.message : "returned empty";
+        const msg = sErr || rErr || "unknown error";
+        console.error("Both AI calls failed:", sErr, rErr);
+        setAiError(msg);
       }
 
       summaryRef.current = summary;
@@ -2153,7 +2159,7 @@ export default function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-5",
           max_tokens: 1000,
           messages: [{
             role: "user",
@@ -2181,7 +2187,9 @@ Respond ONLY with a valid JSON object — no preamble, no markdown:
       });
 
       const data = await res.json();
-      const text = (data.content || []).map(c => c.text || "").join("");
+      if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+      if (!data.content) throw new Error(`Unexpected response: ${JSON.stringify(data)}`);
+      const text = data.content.map(c => c.text || "").join("");
       const clean = text.replace(/```json|```/g, "").trim();
       const parsed = JSON.parse(clean);
 
