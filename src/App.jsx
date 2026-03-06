@@ -1487,17 +1487,73 @@ Calibrate effort and value scores realistically — not everything should be hig
   return JSON.parse(clean);
 }
 
-// ─── Print Helper ─────────────────────────────────────────────────────────────
-// Injects HTML into #dmm-print-container which lives outside React root in
-// normal document flow — Safari can paginate to full height with no clipping.
-function printReport(html) {
-  const container = document.getElementById("dmm-print-container");
-  if (!container) { window.print(); return; }
-  container.innerHTML = html;
-  setTimeout(() => {
-    window.print();
-    setTimeout(() => { container.innerHTML = ""; }, 2000);
-  }, 300);
+// ─── Print Helpers ────────────────────────────────────────────────────────────
+function openPrintWindow(html) {
+  const full = `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
+<style>
+  @media print { @page { margin:14mm 12mm; size:A4; } body { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; } }
+  * { box-sizing:border-box; } body { margin:0; padding:0; background:white; }
+</style></head><body>${html}
+<script>window.addEventListener('load',function(){ setTimeout(function(){ window.print(); },1500); });<\/script>
+</body></html>`;
+  const blob = new Blob([full], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
+  if (!win) alert("Please allow popups for this site, then try again.");
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+// Full assessment report
+function printReport(html) { openPrintWindow(html); }
+
+// Standalone recommendations PDF — simple flat HTML, no complex layout
+function printRecsOnly(recs, user) {
+  if (!recs || !recs.length) return;
+  const priorityColor = (effort, value) => {
+    if (value >= 3 && effort <= 3) return { color: "#068941", bg: "#E0F5EC", label: "Quick Win" };
+    if (value >= 3 && effort > 3)  return { color: "#0072BC", bg: "#DAEEF9", label: "Strategic Investment" };
+    if (value < 3  && effort <= 3) return { color: "#CC7700", bg: "#FFF5CC", label: "Fill-in" };
+    return { color: "#94a3b8", bg: "#f8fafc", label: "Deprioritize" };
+  };
+  const effortLabel = e => ["","Low","Low-Med","Medium","Med-High","High"][e] || "Medium";
+  const valueLabel  = v => ["","Low","Low-Med","Medium","Med-High","High"][v] || "Medium";
+  const date = new Date().toLocaleDateString("en-US", { year:"numeric", month:"long", day:"numeric" });
+
+  const cards = recs.map((r, i) => {
+    const p = priorityColor(r.effort, r.value);
+    return `<div style="margin:0 0 10px;padding:14px 16px;border-left:4px solid ${p.color};border-top:1px solid #e2e8f0;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;background:#fafafa;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
+        <div style="display:flex;gap:8px;align-items:flex-start;flex:1;">
+          <span style="background:${p.color};color:white;font-size:10px;font-weight:700;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-family:Arial,sans-serif;">${i+1}</span>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#0f172a;font-family:Arial,sans-serif;">${r.title}</div>
+            <div style="font-size:10px;color:#94a3b8;font-family:Arial,sans-serif;">${r.area}</div>
+          </div>
+        </div>
+        <span style="background:${p.bg};color:${p.color};font-size:10px;font-weight:700;padding:2px 8px;white-space:nowrap;font-family:Arial,sans-serif;">${p.label}</span>
+      </div>
+      <p style="margin:0 0 8px;font-size:11.5px;color:#334155;line-height:1.6;font-family:Arial,sans-serif;">${r.description}</p>
+      <div style="background:white;padding:7px 10px;border:1px solid #e2e8f0;margin-bottom:6px;">
+        <div style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:1px;margin-bottom:2px;font-family:Arial,sans-serif;">BUSINESS VALUE</div>
+        <div style="font-size:11px;color:#334155;line-height:1.5;font-family:Arial,sans-serif;">${r.business_value}</div>
+      </div>
+      <div style="font-size:10px;color:#64748b;font-family:Arial,sans-serif;">Effort: <strong>${effortLabel(r.effort)}</strong> &nbsp; Value: <strong>${valueLabel(r.value)}</strong></div>
+    </div>`;
+  }).join("");
+
+  const html = `
+    <div style="padding:48px 52px 24px;font-family:Arial,sans-serif;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #e2e8f0;padding-bottom:16px;margin-bottom:28px;">
+        <div style="font-size:11px;font-weight:700;color:#0072BC;letter-spacing:1px;">NTT DATA</div>
+        <div style="font-size:10px;color:#94a3b8;letter-spacing:1.5px;font-weight:700;">CMMI DMM ASSESSMENT REPORT</div>
+      </div>
+      <div style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:2px;margin-bottom:4px;">RECOMMENDATIONS</div>
+      <div style="font-size:26px;font-weight:700;color:#0f172a;margin-bottom:4px;">Prioritized Action Plan</div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:24px;">${user.org} &nbsp;·&nbsp; ${date}</div>
+      ${cards}
+    </div>`;
+
+  openPrintWindow(html);
 }
 
 function ReportOverlay({ user, responses, onClose }) {
@@ -1654,7 +1710,15 @@ function ReportOverlay({ user, responses, onClose }) {
             disabled={status !== "ready"}
             style={{ display: "flex", alignItems: "center", gap: 8, background: status !== "ready" ? "rgba(0,114,188,.4)" : "linear-gradient(135deg,#0072BC,#009AA4)", border: "none", borderRadius: 9, padding: "9px 20px", color: "white", fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: status !== "ready" ? "not-allowed" : "pointer", opacity: status !== "ready" ? 0.6 : 1, whiteSpace: "nowrap" }}
           >
-            🖨 Print / Save as PDF
+            🖨 Full Report PDF
+          </button>
+          <button
+            onClick={() => printRecsOnly(recsRef.current, user)}
+            disabled={status !== "ready" || !recsRef.current}
+            title="Export just the Prioritized Action Plan as a standalone PDF"
+            style={{ display: "flex", alignItems: "center", gap: 8, background: status !== "ready" || !recsRef.current ? "rgba(6,137,65,.3)" : "linear-gradient(135deg,#068941,#00a86b)", border: "none", borderRadius: 9, padding: "9px 20px", color: "white", fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: status !== "ready" || !recsRef.current ? "not-allowed" : "pointer", opacity: status !== "ready" || !recsRef.current ? 0.5 : 1, whiteSpace: "nowrap" }}
+          >
+            📋 Recommendations PDF
           </button>
           <button
             onClick={onClose}
