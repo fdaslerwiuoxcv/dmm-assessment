@@ -1111,12 +1111,12 @@ function areaRadarSVG(aName, responses, size = 300, projectedScores = null) {
   </svg>`;
 
   // Legend header
-  const legendHeader = `<div style="display:flex;align-items:center;gap:7px;margin-bottom:6px;padding-bottom:5px;border-bottom:1px solid #e2e8f0;">
+  const legendHeader = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;padding-bottom:5px;border-bottom:1px solid #e2e8f0;">
     <span style="width:16px;flex-shrink:0;"></span>
     <span style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:0.8px;font-family:'Outfit',sans-serif;flex:1;">TOPIC</span>
-    <span style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:0.8px;font-family:'Outfit',sans-serif;min-width:30px;text-align:right;">NOW</span>
-    ${hasProjections ? `<span style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:0.8px;font-family:'Outfit',sans-serif;min-width:30px;text-align:right;">PROJ.</span>` : ""}
-    <span style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:0.8px;font-family:'Outfit',sans-serif;min-width:62px;">LEVEL</span>
+    <span style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:0.8px;font-family:'Outfit',sans-serif;min-width:36px;text-align:right;">NOW</span>
+    ${hasProjections ? `<span style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:0.8px;font-family:'Outfit',sans-serif;min-width:70px;text-align:right;">PROJECTED</span>` : ""}
+    <span style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:0.8px;font-family:'Outfit',sans-serif;min-width:80px;padding-left:8px;">LEVEL</span>
   </div>`;
 
   const legendRows = spokes.map(s => {
@@ -1133,17 +1133,17 @@ function areaRadarSVG(aName, responses, size = 300, projectedScores = null) {
     const deltaStr = delta !== null ? (delta > 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1)) : "";
 
     const levelDisplay = hasProjections && projScore
-      ? `<div style="display:flex;flex-direction:column;gap:1px;min-width:62px;">
+      ? `<div style="display:flex;flex-direction:column;gap:1px;min-width:80px;padding-left:8px;">
           <span style="font-size:10px;font-weight:600;color:${lvlColor};font-family:'Outfit',sans-serif;">${lvl ? C_LEVELS[lvl] : ""}</span>
           <span style="font-size:9px;color:${projLvlColor};font-family:'Outfit',sans-serif;">→ ${projLvlLabel}</span>
         </div>`
-      : `<span style="font-size:10px;font-weight:600;color:${lvlColor};font-family:'Outfit',sans-serif;min-width:62px;">${lvl ? C_LEVELS[lvl] : ""}</span>`;
+      : `<span style="font-size:10px;font-weight:600;color:${lvlColor};font-family:'Outfit',sans-serif;min-width:80px;padding-left:8px;">${lvl ? C_LEVELS[lvl] : ""}</span>`;
 
-    return `<div style="display:flex;align-items:center;gap:7px;margin-bottom:5px;">
+    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
       <span style="width:16px;height:16px;border-radius:3px;background:${area.color};color:white;font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'Outfit',sans-serif;">${s.label}</span>
       <span style="font-size:11px;color:#334155;font-family:'Outfit',sans-serif;flex:1;">${s.fullLabel}</span>
-      <span style="font-size:11px;font-weight:700;color:${area.color};font-family:'Outfit',sans-serif;min-width:30px;text-align:right;">${scoreText}</span>
-      ${hasProjections ? `<span style="font-size:11px;font-weight:700;color:${projLvlColor ?? area.color};font-family:'Outfit',sans-serif;min-width:30px;text-align:right;">${projScore ? projScore.toFixed(1) : "—"}${deltaStr ? `<tspan style="font-size:9px;color:#94a3b8;"> (${deltaStr})</tspan>` : ""}</span>` : ""}
+      <span style="font-size:11px;font-weight:700;color:${area.color};font-family:'Outfit',sans-serif;min-width:36px;text-align:right;">${scoreText}</span>
+      ${hasProjections ? `<span style="font-size:11px;font-weight:700;color:${projLvlColor ?? area.color};font-family:'Outfit',sans-serif;min-width:70px;text-align:right;">${projScore ? projScore.toFixed(1) : "—"}${deltaStr ? ` <span style="font-size:9px;color:#94a3b8;">(${deltaStr})</span>` : ""}</span>` : ""}
       ${levelDisplay}
     </div>`;
   }).join("");
@@ -1163,10 +1163,10 @@ function areaRadarSVG(aName, responses, size = 300, projectedScores = null) {
     </div>
   </div>` : "";
 
-  return `<div style="display:flex;flex-direction:column;align-items:center;width:${size}px;">
+  return `<div style="display:flex;flex-direction:column;align-items:center;width:100%;">
     ${chartKey}
     ${chartSVG}
-    <div style="width:100%;margin-top:6px;padding:8px 10px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+    <div style="width:100%;max-width:520px;margin-top:6px;padding:10px 14px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
       ${legendHeader}
       ${legendRows}
       ${disclaimer}
