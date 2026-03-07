@@ -645,24 +645,44 @@ const SAMPLE_DATA = {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const rKey = (area, tIdx, type, idx) => `${area}__${tIdx}__${type}__${idx}`;
 
+// ─── Scoring Helpers ─────────────────────────────────────────────────────────
+// Area average = average of topic averages (each topic weighted equally,
+// regardless of how many goals it contains). This is consistent with CMMI DMM
+// methodology and matches what the radar charts display.
+const getAreaAvg = (areaName, responses) => {
+  const topicScores = getTopicScores(areaName, responses).filter(t => t.score > 0);
+  if (topicScores.length === 0) return null;
+  return topicScores.reduce((a, b) => a + b.score, 0) / topicScores.length;
+};
+
 const getStats = (responses) => {
-  let totalGoals = 0, scoredGoals = 0, totalScore = 0;
+  let totalGoals = 0, scoredGoals = 0;
   const areaStats = {};
+  const scoredAreaAvgs = [];
+
   Object.entries(AREAS).forEach(([aName, area]) => {
-    let at = 0, as_ = 0, asc = 0;
+    let at = 0, as_ = 0;
     area.topics.forEach((topic, tIdx) => {
       topic.goals.forEach((_, gIdx) => {
-        const r = responses[rKey(aName, tIdx, "goal", gIdx)];
         at++; totalGoals++;
-        if (r?.score) { as_++; scoredGoals++; asc += r.score; totalScore += r.score; }
+        if (responses[rKey(aName, tIdx, "goal", gIdx)]?.score) { as_++; scoredGoals++; }
       });
     });
-    areaStats[aName] = { total: at, scored: as_, avg: as_ > 0 ? (asc / as_) : null };
+    // Area avg = average of topic averages (topic-weighted, not goal-weighted)
+    const avg = getAreaAvg(aName, responses);
+    areaStats[aName] = { total: at, scored: as_, avg };
+    if (avg !== null) scoredAreaAvgs.push(avg);
   });
+
+  // Overall avg = average of area averages (each area weighted equally)
+  const avg = scoredAreaAvgs.length > 0
+    ? scoredAreaAvgs.reduce((a, b) => a + b, 0) / scoredAreaAvgs.length
+    : null;
+
   return {
     totalGoals, scoredGoals,
     pct: totalGoals > 0 ? Math.round((scoredGoals / totalGoals) * 100) : 0,
-    avg: scoredGoals > 0 ? (totalScore / scoredGoals) : null,
+    avg,
     areaStats,
   };
 };
@@ -1201,8 +1221,7 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
 
   const areaRows = Object.entries(AREAS).map(([aName, area]) => {
     const as_ = stats.areaStats[aName];
-    const ts = getTopicScores(aName, responses).filter(t => t.score > 0);
-    const avg = ts.length > 0 ? ts.reduce((a,b) => a + b.score, 0) / ts.length : null;
+    const avg = as_.avg;
     const pct = as_.total > 0 ? Math.round((as_.scored / as_.total) * 100) : 0;
     return `<tr style="border-bottom:1px solid #f1f5f9;">
       <td style="padding:11px 16px;font-weight:600;color:#0f172a;font-size:13px;font-family:'Outfit',sans-serif;">${area.icon} ${aName}</td>
@@ -1214,8 +1233,7 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
 
   const areaDetailSections = Object.entries(AREAS).map(([aName, area]) => {
     const as_ = stats.areaStats[aName];
-    const ts = getTopicScores(aName, responses).filter(t => t.score > 0);
-    const areaAvg = ts.length > 0 ? ts.reduce((a,b) => a + b.score, 0) / ts.length : null;
+    const areaAvg = as_.avg;
 
     const topicSections = area.topics.map((topic, tIdx) => {
       const scored = topic.goals.map((_,gIdx) => responses[rKey(aName,tIdx,"goal",gIdx)]?.score).filter(Boolean);
