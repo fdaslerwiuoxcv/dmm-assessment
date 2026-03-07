@@ -1586,7 +1586,7 @@ function printRecsOnly(recs, user) {
   openPrintWindow(html, `${dateStamp()}_NTT_DATA_Action_Plan`);
 }
 
-function ReportOverlay({ user, responses, onClose }) {
+function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, onSummaryGenerated, onRecsGenerated }) {
   const [status, setStatus] = useState("generating"); // generating | ready | error
   const [errorMsg, setErrorMsg] = useState("");
   const [aiError, setAiError] = useState("");
@@ -1616,11 +1616,30 @@ function ReportOverlay({ user, responses, onClose }) {
       return;
     }
 
+    // If both cached values exist, skip API calls entirely
+    if (cachedSummary && cachedRecs) {
+      summaryRef.current = cachedSummary;
+      recsRef.current    = cachedRecs;
+      try {
+        setHtml(buildReportHTML(user, responses, cachedSummary, null));
+        setStatus("ready");
+      } catch (e) {
+        setErrorMsg(e.message || String(e));
+        setStatus("error");
+      }
+      return;
+    }
+
+    // Otherwise make only the calls we need
+    const summaryCall = cachedSummary
+      ? Promise.resolve(cachedSummary)
+      : generateAISummary(user, responses);
+    const recsCall = cachedRecs
+      ? Promise.resolve(cachedRecs)
+      : generateRecommendations(user, responses);
+
     // AI calls in parallel — allSettled captures both successes and failures
-    Promise.allSettled([
-      generateAISummary(user, responses),
-      generateRecommendations(user, responses),
-    ]).then(([sRes, rRes]) => {
+    Promise.allSettled([summaryCall, recsCall]).then(([sRes, rRes]) => {
       const summary = (sRes.status === "fulfilled" && sRes.value) ? sRes.value : null;
       const recs    = (rRes.status === "fulfilled" && rRes.value)  ? rRes.value  : null;
 
@@ -1638,6 +1657,11 @@ function ReportOverlay({ user, responses, onClose }) {
 
       summaryRef.current = summary;
       recsRef.current    = recs;
+
+      // Persist newly generated values to parent state + storage
+      if (summary && !cachedSummary && onSummaryGenerated) onSummaryGenerated(summary);
+      if (recs    && !cachedRecs    && onRecsGenerated)    onRecsGenerated(recs);
+
       try {
         setHtml(buildReportHTML(user, responses, summary, null));
         setStatus("ready");
@@ -2264,10 +2288,33 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
   const [activeView, setActiveView] = useState("dashboard");
   const [showReport, setShowReport] = useState(false);
   const [topicRecs, setTopicRecs] = useState(null);
+  const [reportSummary, setReportSummary] = useState(null);
+  const [reportRecs, setReportRecs] = useState(null);
 
-  // Expose a way for Root to clear topicRecs when scores change
+  // Expose a way for Root to clear all AI cache state when scores change
   useEffect(() => {
-    if (onClearTopicRecs) onClearTopicRecs(() => setTopicRecs(null));
+    if (onClearTopicRecs) onClearTopicRecs(() => {
+      setTopicRecs(null);
+      setReportSummary(null);
+      setReportRecs(null);
+    });
+  }, []);
+
+  // Load cached report AI content from storage on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const s = await window.storage.get("dmm_report_summary");
+        if (s?.value) setReportSummary(s.value);
+      } catch (e) {}
+      try {
+        const r = await window.storage.get("dmm_report_recs");
+        if (r?.value) {
+          const parsed = JSON.parse(r.value);
+          if (Array.isArray(parsed)) setReportRecs(parsed);
+        }
+      } catch (e) {}
+    })();
   }, []);
   const stats = getStats(responses);
 
@@ -2357,7 +2404,21 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
 
       {/* Report overlay */}
       {showReport && (
-        <ReportOverlay user={user} responses={responses} onClose={() => setShowReport(false)} />
+        <ReportOverlay
+          user={user}
+          responses={responses}
+          onClose={() => setShowReport(false)}
+          cachedSummary={reportSummary}
+          cachedRecs={reportRecs}
+          onSummaryGenerated={s => {
+            setReportSummary(s);
+            try { window.storage.set("dmm_report_summary", s); } catch (e) {}
+          }}
+          onRecsGenerated={r => {
+            setReportRecs(r);
+            try { window.storage.set("dmm_report_recs", JSON.stringify(r)); } catch (e) {}
+          }}
+        />
       )}
     </div>
   );
@@ -2395,8 +2456,10 @@ export default function App() {
   const saveResponses = async (r) => {
     setResponses(r);
     try { await window.storage.set("dmm_responses", JSON.stringify(r)); } catch (e) {}
-    // Invalidate cached recommendations so they reflect new scores
+    // Invalidate all cached AI content so it reflects new scores
     try { await window.storage.delete("dmm_topic_recs"); } catch (e) {}
+    try { await window.storage.delete("dmm_report_summary"); } catch (e) {}
+    try { await window.storage.delete("dmm_report_recs"); } catch (e) {}
     // Also clear in-memory recs in MainApp
     if (clearTopicRecsRef.current) clearTopicRecsRef.current();
   };
