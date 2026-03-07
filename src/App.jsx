@@ -1395,7 +1395,7 @@ function buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projecte
 
       <!-- AI Assessment section -->
       <div style="border-top:1.5px solid #f1f5f9;padding-top:22px;">
-        <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin:0 0 18px;font-family:'Outfit',sans-serif;">AI ASSESSMENT — BY TOPIC</p>
+        <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin:0 0 18px;font-family:'Outfit',sans-serif;">ASSESSMENT FINDINGS</p>
         ${narrativeSection || '<p style="color:#94a3b8;font-size:12px;font-family:Outfit,sans-serif;">No goals have been scored for this area yet.</p>'}
       </div>
 
@@ -1502,14 +1502,14 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
           .join('\n')
           .trim();
         // Split into paragraphs and render
-        const paragraphStyle = `margin:12px 0 0;font-size:14px;color:rgba(255,255,255,.88);line-height:1.85;font-family:Outfit,sans-serif;`;
+        const paragraphStyle = `margin:12px 0 0;font-size:14px;color:#334155;line-height:1.85;font-family:Outfit,sans-serif;`;
         const paras = cleaned.split(/\n\n+/).filter(Boolean);
         const body = paras.map((p, i) =>
-          `<p style="${i === 0 ? 'margin:0;' : 'margin:14px 0 0;'}font-size:14px;color:rgba(255,255,255,.88);line-height:1.85;font-family:Outfit,sans-serif;">${p.replace(/\n/g, '<br/>')}</p>`
+          `<p style="${i === 0 ? 'margin:0;' : 'margin:14px 0 0;'}font-size:14px;color:#334155;line-height:1.85;font-family:Outfit,sans-serif;">${p.replace(/\n/g, '<br/>')}</p>`
         ).join('');
         return `
-      <div style="margin-bottom:32px;padding:32px 36px;background:linear-gradient(135deg,#070F26,#005B96);border-radius:14px;color:white;">
-        <h3 style="font-family:'Fraunces',serif;font-size:26px;font-weight:700;color:white;margin:0 0 20px;line-height:1.2;">Executive Assessment: Data Management Maturity</h3>
+      <div style="margin-bottom:32px;padding:32px 36px;background:#f8fafc;border-radius:14px;border:1.5px solid #e2e8f0;">
+        <h3 style="font-family:'Fraunces',serif;font-size:26px;font-weight:700;color:#0f172a;margin:0 0 20px;line-height:1.2;">Executive Assessment: Data Management Maturity</h3>
         ${body}
       </div>`;
       })() : ""}
@@ -1603,7 +1603,6 @@ For each topic in the area below, produce:
    - Be achievable within a realistic programme of work (not aspirational boilerplate)
    - Read as a clear directive a data governance practitioner can act on
    Do NOT write generic recommendations (e.g. "establish data governance policies"). Every recommendation must be traceable to the evidence provided.
-- Use American English spelling throughout (e.g., "program" not "programme", "prioritize" not "prioritise", "analyze" not "analyse").
 
 2. A projected maturity score (1.0–5.0 CMMI scale) achievable after implementing these specific recommendations. Rules:
    - Conservative: typical improvement is 0.3–0.8 points per improvement cycle
@@ -1719,7 +1718,6 @@ For each topic below, write a concise narrative paragraph (3–5 sentences) that
 - Identifies the key gap or risk
 - Uses professional language appropriate for an executive audience
 - Flowing prose only — no bullets, headers, or markdown
-- Use American English spelling throughout (e.g., "program" not "programme", "prioritize" not "prioritise", "analyze" not "analyse")
 
 AREA: ${aName}
 ${topicBlocks.join("\n\n")}
@@ -1796,8 +1794,7 @@ Write the narrative with these guidelines:
 - Close with a forward-looking paragraph on recommended focus areas to advance maturity
 - Use a professional, authoritative tone appropriate for a C-suite or board-level audience
 - Do NOT use bullet points, headers, or markdown — write in flowing prose paragraphs only
-- Do NOT mention CMMI level numbers directly; instead use their labels (Performed, Managed, Defined, Measured, Optimized) where relevant
-- Use American English spelling throughout (e.g., "program" not "programme", "prioritize" not "prioritise", "analyze" not "analyse")`
+- Do NOT mention CMMI level numbers directly; instead use their labels (Performed, Managed, Defined, Measured, Optimized) where relevant`
       }]
     })
   });
@@ -1844,8 +1841,7 @@ Respond ONLY with a valid JSON array. No preamble, no markdown, no explanation. 
 - "effort": integer 1–5 (1=very low effort, 5=very high effort)
 - "value": integer 1–5 (1=low business value, 5=very high business value)
 
-Calibrate effort and value scores realistically — not everything should be high value. Spread scores across the matrix so the payoff chart is meaningful.
-- Use American English spelling throughout (e.g., "program" not "programme", "prioritize" not "prioritise", "analyze" not "analyse").`
+Calibrate effort and value scores realistically — not everything should be high value. Spread scores across the matrix so the payoff chart is meaningful.`
       }]
     })
   });
@@ -2206,7 +2202,7 @@ Use this evidence to generate one specific, actionable recommendation per topic 
 ASSESSMENT RESULTS:
 ${areaSummaries}
 
-Use American English spelling throughout. Return ONLY a valid JSON object. No preamble or markdown. Structure:
+Return ONLY a valid JSON object. No preamble or markdown. Structure:
 {
   "Area Name": {
     "Topic Name": { "rec": "specific actionable recommendation grounded in the assessment evidence", "priority": "high|medium|low" }
@@ -2807,7 +2803,7 @@ ${comment}
 
 Carefully evaluate the response. Consider what is explicitly stated, what is implied to be absent or informal, and the maturity indicators in the language used (e.g., "sometimes" vs. "always", "project-level" vs. "organization-wide", "working on" vs. "established and followed").
 
-Use American English spelling throughout. Respond ONLY with a valid JSON object — no preamble, no markdown:
+Respond ONLY with a valid JSON object — no preamble, no markdown:
 {"score": <integer 1-5>, "level": "<Performed|Managed|Defined|Measured|Optimized>", "rationale": "<2-3 sentences citing specific evidence from the response that justify the assigned score>"}`
           }]
         })
