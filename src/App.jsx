@@ -1176,11 +1176,12 @@ function areaRadarSVG(aName, responses, size = 300, projectedScores = null) {
 
 // ─── Payoff Matrix SVG ────────────────────────────────────────────────────────
 // ─── Report Page Builders ─────────────────────────────────────────────────────
-function buildAreaPages(responses, areaSummaries, C, badge, bar, stats) {
+function buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projectedScores = null, areaRecsAndProjections = null) {
   return Object.entries(AREAS).map(([aName, area]) => {
     const as_ = stats.areaStats[aName];
     const areaAvg = as_.avg;
-    const radarSvg = areaRadarSVG(aName, responses, 320, null);
+    const areaProjections = projectedScores ? (projectedScores[aName] ?? null) : null;
+    const radarSvg = areaRadarSVG(aName, responses, 320, areaProjections);
     const areaNarratives = areaSummaries ? (areaSummaries[aName] || areaSummaries[Object.keys(areaSummaries).find(k => k.toLowerCase().includes(aName.toLowerCase().slice(0,6))) || ""] || null) : null;
 
     const narrativeSection = area.topics.map((topic, tIdx) => {
@@ -1191,7 +1192,21 @@ function buildAreaPages(responses, areaSummaries, C, badge, bar, stats) {
         ? (areaNarratives[topic.name] || areaNarratives[Object.keys(areaNarratives).find(k => k.toLowerCase().includes(topic.name.toLowerCase().slice(0,6))) || ""] || null)
         : null;
 
-      const recBullets = "";
+      const areaTopicRecs = areaRecsAndProjections ? (areaRecsAndProjections[aName] || null) : null;
+      const topicRecData = areaTopicRecs
+        ? (areaTopicRecs[topic.name] || areaTopicRecs[Object.keys(areaTopicRecs).find(k => k.toLowerCase().includes(topic.name.toLowerCase().slice(0, 6))) || ""] || null)
+        : null;
+      const recBullets = topicRecData?.recs?.length > 0
+        ? `<div style="margin-top:14px;padding-top:12px;border-top:1px solid ${area.color}18;">
+            <p style="font-size:9.5px;font-weight:700;color:#94a3b8;letter-spacing:1.4px;margin:0 0 8px;font-family:'Outfit',sans-serif;text-transform:uppercase;">Recommendations</p>
+            <ul style="margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:7px;">
+              ${topicRecData.recs.map(r => `<li style="display:flex;align-items:flex-start;gap:9px;font-size:12.5px;color:#334155;line-height:1.65;font-family:'Outfit',sans-serif;">
+                <span style="width:18px;height:18px;border-radius:50%;background:${area.color}18;border:1.5px solid ${area.color}40;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:${area.color};flex-shrink:0;margin-top:1px;">→</span>
+                <span>${r}</span>
+              </li>`).join("")}
+            </ul>
+          </div>`
+        : "";
 
       return `<div style="margin-bottom:24px;padding-bottom:24px;border-bottom:1px solid #f1f5f9;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-bottom:8px;border-bottom:1.5px solid ${area.color}20;">
@@ -1235,7 +1250,7 @@ function buildAreaPages(responses, areaSummaries, C, badge, bar, stats) {
   }).join("");
 }
 
-function buildReportHTML(user, responses, aiSummary = null, areaSummaries = null) {
+function buildReportHTML(user, responses, aiSummary = null, areaSummaries = null, projectedScores = null, areaRecsAndProjections = null) {
   const stats = getStats(responses);
   const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   const overallLevel = stats.avg ? Math.min(5, Math.max(1, Math.round(stats.avg))) : null;
@@ -1275,7 +1290,7 @@ function buildReportHTML(user, responses, aiSummary = null, areaSummaries = null
     </tr>`;
   }).join("");
 
-  const areaDetailPages = buildAreaPages(responses, areaSummaries, C, badge, bar, stats);
+  const areaDetailPages = buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projectedScores, areaRecsAndProjections);
 
   return `
     <style>
@@ -1379,6 +1394,128 @@ function buildReportHTML(user, responses, aiSummary = null, areaSummaries = null
       ${areaDetailPages}
     </div>
   `;
+}
+
+// ─── Recs + Projections Generator ────────────────────────────────────────────
+// Single combined call per area: produces per-topic bullet recommendations AND
+// projected scores in one pass so projections are grounded in the actual recs.
+
+async function generateSingleAreaRecsAndProjections(aName, responses) {
+  const area = AREAS[aName];
+
+  const topicBlocks = area.topics.map((topic, tIdx) => {
+    const scored = topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean);
+    if (scored.length === 0) return null;
+    const avg = (scored.reduce((a, b) => a + b, 0) / scored.length).toFixed(1);
+
+    const goalLines = topic.goals.map((goalText, gIdx) => {
+      const r = responses[rKey(aName, tIdx, "goal", gIdx)];
+      if (!r?.score) return null;
+      const lines = [`    Goal ${gIdx + 1} (Score ${r.score}/5): ${goalText}`];
+      if (r.comment)   lines.push(`      Assessor notes: ${r.comment}`);
+      if (r.rationale) lines.push(`      AI rationale: ${r.rationale}`);
+      return lines.join("\n");
+    }).filter(Boolean);
+
+    return `Topic: ${topic.name} (current avg ${avg}/5)\n${goalLines.join("\n")}`;
+  }).filter(Boolean);
+
+  if (topicBlocks.length === 0) return null;
+
+  const res = await fetch("/api/ai", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 2000,
+      messages: [{
+        role: "user",
+        content: `You are a senior CMMI DMM data governance consultant at NTT DATA authoring a formal client assessment report.
+
+For each topic in the area below, produce:
+1. Three to four specific, actionable recommendations grounded directly in the assessment evidence — the scores, assessor notes, and rationales. Each recommendation must:
+   - Address a concrete gap or weakness identified in the evidence
+   - Name the specific capability, process, or artefact to build or fix
+   - Be achievable within a realistic programme of work (not aspirational boilerplate)
+   - Read as a clear directive a data governance practitioner can act on
+   Do NOT write generic recommendations (e.g. "establish data governance policies"). Every recommendation must be traceable to the evidence provided.
+
+2. A projected maturity score (1.0–5.0 CMMI scale) achievable after implementing these specific recommendations. Rules:
+   - Conservative: typical improvement is 0.3–0.8 points per improvement cycle
+   - Never project above 5.0 or below the current score
+   - If current score >= 4.0, cap projected improvement at 0.3 unless evidence clearly indicates near-readiness for next level
+   - The projected score must be consistent with the ambition of the recommendations you wrote
+
+Use American English spelling throughout.
+
+ASSESSMENT AREA: ${aName}
+
+${topicBlocks.join("\n\n")}
+
+Return ONLY a valid JSON object. No preamble, no markdown fences, no explanation:
+{
+  "Exact Topic Name": {
+    "recs": [
+      "Specific recommendation 1",
+      "Specific recommendation 2",
+      "Specific recommendation 3"
+    ],
+    "projected": 2.8
+  }
+}`
+      }]
+    })
+  });
+
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  const raw = data.content.map(c => c.text || "").join("").trim();
+  const clean = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+  const parsed = JSON.parse(clean);
+
+  const validated = {};
+  Object.entries(parsed).forEach(([topicName, val]) => {
+    if (!val || !Array.isArray(val.recs)) return;
+    const n = parseFloat(val.projected);
+    validated[topicName] = {
+      recs: val.recs.filter(r => typeof r === "string" && r.trim().length > 0),
+      projected: !isNaN(n) && n >= 1.0 && n <= 5.0 ? Math.round(n * 10) / 10 : null,
+    };
+  });
+  return Object.keys(validated).length > 0 ? validated : null;
+}
+
+async function generateAllAreaRecsAndProjections(responses) {
+  const results = await Promise.allSettled(
+    Object.keys(AREAS).map(aName =>
+      generateSingleAreaRecsAndProjections(aName, responses).then(result => ({ aName, result }))
+    )
+  );
+
+  const combined = {};
+  results.forEach(r => {
+    if (r.status === "fulfilled" && r.value?.result) {
+      combined[r.value.aName] = r.value.result;
+    } else if (r.status === "rejected") {
+      console.error("Recs+projections failed for area:", r.reason?.message || r.reason);
+    }
+  });
+  return Object.keys(combined).length > 0 ? combined : null;
+}
+
+function extractProjectedScores(areaRecsAndProjections) {
+  if (!areaRecsAndProjections) return null;
+  const projections = {};
+  Object.entries(areaRecsAndProjections).forEach(([aName, topicData]) => {
+    const topicProjections = {};
+    Object.entries(topicData).forEach(([topicName, data]) => {
+      if (data?.projected !== null && data?.projected !== undefined) {
+        topicProjections[topicName] = data.projected;
+      }
+    });
+    if (Object.keys(topicProjections).length > 0) projections[aName] = topicProjections;
+  });
+  return Object.keys(projections).length > 0 ? projections : null;
 }
 
 // ─── Area Summaries Generator ─────────────────────────────────────────────────
@@ -1538,7 +1675,7 @@ function printReport(html) { openPrintWindow(html, `${dateStamp()}_NTT_DATA_Asse
 
 // Standalone recommendations PDF — simple flat HTML, no complex layout
 
-function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSummaries, onSummaryGenerated, onAreaSummariesGenerated }) {
+function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSummaries, cachedAreaRecsAndProjections, onSummaryGenerated, onAreaSummariesGenerated, onAreaRecsAndProjectionsGenerated }) {
   const [status, setStatus] = useState("generating");
   const [errorMsg, setErrorMsg] = useState("");
   const [aiError, setAiError] = useState("");
@@ -1546,9 +1683,10 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSumm
   const summaryRef         = useRef(null);
   const areaSummariesRef   = useRef(null);
 
-  const rebuild = (summary, areaSummaries) => {
+  const rebuild = (summary, areaSummaries, areaRecsAndProjections) => {
     try {
-      setHtml(buildReportHTML(user, responses, summary, areaSummaries));
+      const projectedScores = extractProjectedScores(areaRecsAndProjections);
+      setHtml(buildReportHTML(user, responses, summary, areaSummaries, projectedScores, areaRecsAndProjections));
     } catch (e) {
       console.error("buildReportHTML failed:", e);
       setErrorMsg(e.message || String(e));
@@ -1566,11 +1704,13 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSumm
     }
 
     // If all cached values exist, skip all API calls
-    if (cachedSummary && cachedAreaSummaries) {
-      summaryRef.current       = cachedSummary;
-      areaSummariesRef.current = cachedAreaSummaries;
+    if (cachedSummary && cachedAreaSummaries && cachedAreaRecsAndProjections) {
+      summaryRef.current              = cachedSummary;
+      areaSummariesRef.current        = cachedAreaSummaries;
+      areaRecsAndProjectionsRef.current = cachedAreaRecsAndProjections;
       try {
-        setHtml(buildReportHTML(user, responses, cachedSummary, cachedAreaSummaries));
+        const projectedScores = extractProjectedScores(cachedAreaRecsAndProjections);
+        setHtml(buildReportHTML(user, responses, cachedSummary, cachedAreaSummaries, projectedScores, cachedAreaRecsAndProjections));
         setStatus("ready");
       } catch (e) {
         setErrorMsg(e.message || String(e));
@@ -1581,13 +1721,16 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSumm
 
     const summaryCall      = cachedSummary                ? Promise.resolve(cachedSummary)                : generateAISummary(user, responses);
     const areaSummaryCall  = cachedAreaSummaries          ? Promise.resolve(cachedAreaSummaries)          : generateAreaSummaries(responses);
+    const recsProjectCall  = cachedAreaRecsAndProjections ? Promise.resolve(cachedAreaRecsAndProjections) : generateAllAreaRecsAndProjections(responses);
 
-    Promise.allSettled([summaryCall, areaSummaryCall]).then(([sRes, asRes]) => {
-      const summary       = (sRes.status  === "fulfilled" && sRes.value)  ? sRes.value  : null;
-      const areaSummaries = (asRes.status === "fulfilled" && asRes.value) ? asRes.value : null;
+    Promise.allSettled([summaryCall, areaSummaryCall, recsProjectCall]).then(([sRes, asRes, rpRes]) => {
+      const summary                = (sRes.status  === "fulfilled" && sRes.value)  ? sRes.value  : null;
+      const areaSummaries          = (asRes.status === "fulfilled" && asRes.value) ? asRes.value : null;
+      const areaRecsAndProjections = (rpRes.status === "fulfilled" && rpRes.value) ? rpRes.value : null;
 
       if (sRes.status  === "rejected") { console.error("AI summary error:",        sRes.reason?.message  || sRes.reason); setAiError(`Summary failed: ${sRes.reason?.message || "unknown"}`); }
       if (asRes.status === "rejected") console.error("AI area summaries error:",   asRes.reason?.message || asRes.reason);
+      if (rpRes.status === "rejected") console.error("AI recs+projections error:", rpRes.reason?.message || rpRes.reason);
 
       summaryRef.current                = summary;
       areaSummariesRef.current          = areaSummaries;
@@ -1596,7 +1739,8 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSumm
       if (areaSummaries          && !cachedAreaSummaries          && onAreaSummariesGenerated)          onAreaSummariesGenerated(areaSummaries);
 
       try {
-        setHtml(buildReportHTML(user, responses, summary, areaSummaries));
+        const projectedScores = extractProjectedScores(areaRecsAndProjections);
+        setHtml(buildReportHTML(user, responses, summary, areaSummaries, projectedScores, areaRecsAndProjections));
         setStatus("ready");
       } catch (e) {
         console.error("buildReportHTML (with AI) failed:", e);
@@ -1614,7 +1758,7 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSumm
 
   const handleToggle = (val) => {
     setIncludeRecs(val);
-    if (status === "ready") rebuild(summaryRef.current, areaSummariesRef.current);
+    if (status === "ready") rebuild(summaryRef.current, areaSummariesRef.current, areaRecsAndProjectionsRef.current);
   };
 
   // ── Error screen ─────────────────────────────────────────────────────────────
@@ -2112,6 +2256,7 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
   const [topicRecs, setTopicRecs] = useState(null);
   const [reportSummary, setReportSummary] = useState(null);
   const [reportAreaSummaries, setReportAreaSummaries] = useState(null);
+  const [reportAreaRecsAndProjections, setReportAreaRecsAndProjections] = useState(null);
 
   // Expose a way for Root to clear all AI cache state when scores change
   useEffect(() => {
@@ -2225,6 +2370,7 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
           onClose={() => setShowReport(false)}
           cachedSummary={reportSummary}
           cachedAreaSummaries={reportAreaSummaries}
+          cachedAreaRecsAndProjections={reportAreaRecsAndProjections}
           onSummaryGenerated={s => {
             setReportSummary(s);
             try { window.storage.set("dmm_report_summary", s); } catch (e) {}
@@ -2275,6 +2421,7 @@ export default function App() {
     try { await window.storage.delete("dmm_topic_recs"); } catch (e) {}
     try { await window.storage.delete("dmm_report_summary"); } catch (e) {}
     try { await window.storage.delete("dmm_report_area_summaries"); } catch (e) {}
+    try { await window.storage.delete("dmm_report_area_recs_proj"); } catch (e) {}
     // Also clear in-memory recs in MainApp
     if (clearTopicRecsRef.current) clearTopicRecsRef.current();
   };
