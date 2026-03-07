@@ -1175,6 +1175,227 @@ function areaRadarSVG(aName, responses, size = 300, projectedScores = null) {
 }
 
 // ─── Payoff Matrix SVG ────────────────────────────────────────────────────────
+// ─── Report Page Builders ─────────────────────────────────────────────────────
+function buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projectedScores = null, areaRecsAndProjections = null) {
+  return Object.entries(AREAS).map(([aName, area]) => {
+    const as_ = stats.areaStats[aName];
+    const areaAvg = as_.avg;
+    const areaProjections = projectedScores ? (projectedScores[aName] ?? null) : null;
+    const radarSvg = areaRadarSVG(aName, responses, 320, areaProjections);
+    const areaNarratives = areaSummaries ? (areaSummaries[aName] || areaSummaries[Object.keys(areaSummaries).find(k => k.toLowerCase().includes(aName.toLowerCase().slice(0,6))) || ""] || null) : null;
+
+    const narrativeSection = area.topics.map((topic, tIdx) => {
+      const scored = topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean);
+      if (scored.length === 0) return "";
+      const topicAvg = scored.reduce((a, b) => a + b, 0) / scored.length;
+      const narrative = areaNarratives
+        ? (areaNarratives[topic.name] || areaNarratives[Object.keys(areaNarratives).find(k => k.toLowerCase().includes(topic.name.toLowerCase().slice(0,6))) || ""] || null)
+        : null;
+
+      const areaTopicRecs = areaRecsAndProjections ? (areaRecsAndProjections[aName] || null) : null;
+      const topicRecData = areaTopicRecs
+        ? (areaTopicRecs[topic.name] || areaTopicRecs[Object.keys(areaTopicRecs).find(k => k.toLowerCase().includes(topic.name.toLowerCase().slice(0, 6))) || ""] || null)
+        : null;
+      const recBullets = topicRecData?.recs?.length > 0
+        ? `<div style="margin-top:14px;padding-top:12px;border-top:1px solid ${area.color}18;">
+            <p style="font-size:9.5px;font-weight:700;color:#94a3b8;letter-spacing:1.4px;margin:0 0 8px;font-family:'Outfit',sans-serif;text-transform:uppercase;">Recommendations</p>
+            <ul style="margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:7px;">
+              ${topicRecData.recs.map(r => `<li style="display:flex;align-items:flex-start;gap:9px;font-size:12.5px;color:#334155;line-height:1.65;font-family:'Outfit',sans-serif;">
+                <span style="width:18px;height:18px;border-radius:50%;background:${area.color}18;border:1.5px solid ${area.color}40;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:${area.color};flex-shrink:0;margin-top:1px;">→</span>
+                <span>${r}</span>
+              </li>`).join("")}
+            </ul>
+          </div>`
+        : "";
+
+      return `<div style="margin-bottom:24px;padding-bottom:24px;border-bottom:1px solid #f1f5f9;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-bottom:8px;border-bottom:1.5px solid ${area.color}20;">
+          <span style="font-size:13px;font-weight:700;color:#0f172a;font-family:'Outfit',sans-serif;">${topic.name}</span>
+          ${badge(topicAvg)}
+        </div>
+        ${narrative
+          ? `<p style="margin:0;font-size:13px;color:#334155;line-height:1.75;font-family:'Outfit',sans-serif;">${narrative}</p>`
+          : `<p style="margin:0;font-size:12px;color:#94a3b8;font-style:italic;font-family:'Outfit',sans-serif;">AI narrative pending.</p>`
+        }
+        ${recBullets}
+      </div>`;
+    }).join("");
+
+    return `<div style="padding:44px 28px;page-break-before:always;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:1.5px solid #f1f5f9;">
+        ${nttLogoBlackHTML(20)}
+        <span style="font-size:10px;font-weight:700;color:#cbd5e1;letter-spacing:2px;font-family:'Outfit',sans-serif;">CMMI DMM ASSESSMENT REPORT</span>
+      </div>
+      <div style="background:linear-gradient(135deg,${area.color}12,${area.color}04);border-radius:12px;padding:20px 26px;margin-bottom:24px;border:1.5px solid ${area.color}1a;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div style="display:flex;align-items:center;gap:14px;">
+            <img src="${area.icon}" alt="" style="width:32px;height:32px;object-fit:contain;" />
+            <div>
+              <h2 style="margin:0;font-size:22px;font-weight:700;color:#0f172a;font-family:'Fraunces',serif;">${aName}</h2>
+              <p style="margin:4px 0 0;font-size:12px;color:#64748b;font-family:'Outfit',sans-serif;">${area.topics.length} topics · ${as_.total} goals · ${as_.scored} scored</p>
+            </div>
+          </div>
+          ${areaAvg ? `<div style="text-align:right;">${badge(areaAvg)}<div style="font-size:10px;color:#94a3b8;margin-top:5px;font-family:'Outfit',sans-serif;">Area average</div></div>` : ""}
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;margin-bottom:28px;">
+        <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin:0 0 10px;font-family:'Outfit',sans-serif;">MATURITY PROFILE</p>
+        ${radarSvg}
+      </div>
+      <div style="border-top:1.5px solid #f1f5f9;padding-top:22px;">
+        <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin:0 0 18px;font-family:'Outfit',sans-serif;">ASSESSMENT FINDINGS</p>
+        ${narrativeSection || '<p style="color:#94a3b8;font-size:12px;font-family:Outfit,sans-serif;">No goals have been scored for this area yet.</p>'}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function buildReportHTML(user, responses, aiSummary = null, areaSummaries = null, projectedScores = null, areaRecsAndProjections = null) {
+  const stats = getStats(responses);
+  const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  const overallLevel = stats.avg ? Math.min(5, Math.max(1, Math.round(stats.avg))) : null;
+  const overallCmmi = overallLevel ? CMMI[overallLevel] : null;
+
+  const C = {
+    1: { color: "#B22000", bg: "#FDECEA", label: "Performed" },
+    2: { color: "#E42600", bg: "#FDE8E4", label: "Managed" },
+    3: { color: "#CC7700", bg: "#FFF5CC", label: "Defined" },
+    4: { color: "#0072BC", bg: "#DAEEF9", label: "Measured" },
+    5: { color: "#068941", bg: "#E0F5EC", label: "Optimized" },
+  };
+
+  const badge = (score) => {
+    if (!score) return `<span style="color:#94a3b8;font-size:12px;font-family:'Outfit',sans-serif;">Not scored</span>`;
+    const lvl = Math.min(5, Math.max(1, Math.round(score)));
+    const c = C[lvl];
+    return `<span style="background:${c.bg};color:${c.color};border:1.5px solid ${c.color}50;border-radius:20px;padding:3px 11px;font-size:12px;font-weight:700;font-family:'Outfit',sans-serif;white-space:nowrap;">${score.toFixed(1)} — ${c.label}</span>`;
+  };
+
+  const bar = (score, width = 100) => {
+    if (!score) return "";
+    const lvl = Math.min(5, Math.max(1, Math.round(score)));
+    const c = C[lvl];
+    return `<div style="background:#f1f5f9;border-radius:4px;height:7px;width:${width}px;display:inline-block;vertical-align:middle;margin-left:8px;"><div style="width:${(score/5)*100}%;background:${c.color};height:7px;border-radius:4px;"></div></div>`;
+  };
+
+  const areaRows = Object.entries(AREAS).map(([aName, area]) => {
+    const as_ = stats.areaStats[aName];
+    const avg = as_.avg;
+    const pct = as_.total > 0 ? Math.round((as_.scored / as_.total) * 100) : 0;
+    return `<tr style="border-bottom:1px solid #f1f5f9;">
+      <td style="padding:11px 16px;font-weight:600;color:#0f172a;font-size:13px;font-family:'Outfit',sans-serif;"><img src="${area.icon}" alt="" style="width:16px;height:16px;object-fit:contain;vertical-align:middle;margin-right:6px;" />${aName}</td>
+      <td style="padding:11px 16px;text-align:center;">${avg ? badge(avg) : '<span style="color:#cbd5e1;font-size:13px;">—</span>'}</td>
+      <td style="padding:11px 16px;text-align:center;font-size:12px;color:#64748b;font-family:'Outfit',sans-serif;">${as_.scored}/${as_.total}</td>
+      <td style="padding:11px 16px;"><div style="background:#f1f5f9;border-radius:4px;height:8px;width:${Math.max(pct,2)}px;max-width:120px;"><div style="width:100%;background:${area.color};height:8px;border-radius:4px;"></div></div></td>
+    </tr>`;
+  }).join("");
+
+  const areaDetailPages = buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projectedScores, areaRecsAndProjections);
+
+  return `
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Fraunces:wght@400;600;700&display=swap');
+      * { box-sizing:border-box; }
+      @media print {
+        @page { margin:14mm 8mm 16mm; size:A4; }
+        body { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+      }
+    </style>
+
+    <!-- COVER -->
+    <div style="page-break-after:always;display:flex;flex-direction:column;justify-content:center;padding:56px 60px;min-height:100%;background:white;">
+      <div style="margin-bottom:44px;">
+        <div style="display:flex;align-items:center;gap:16px;margin-bottom:36px;">
+          ${nttLogoBlackHTML(32)}
+          <div style="width:1px;height:32px;background:#e2e8f0;"></div>
+          <span style="color:#94a3b8;font-size:11px;font-weight:700;letter-spacing:2px;font-family:'Outfit',sans-serif;">CMMI DMM ASSESSMENT REPORT</span>
+        </div>
+        <h1 style="font-family:'Fraunces',serif;font-size:48px;font-weight:700;color:#0f172a;line-height:1.1;margin:0 0 10px;">${user.org}</h1>
+        <h2 style="font-family:'Fraunces',serif;font-size:24px;font-weight:400;color:#0072BC;font-style:italic;margin:0;">Data Management Maturity Evaluation</h2>
+      </div>
+      <div style="display:flex;gap:44px;margin-bottom:56px;align-items:flex-end;">
+        ${stats.avg ? `<div>
+          <div style="font-size:10px;color:#94a3b8;font-weight:600;letter-spacing:1.5px;margin-bottom:6px;font-family:'Outfit',sans-serif;">OVERALL MATURITY SCORE</div>
+          <div style="font-family:'Fraunces',serif;font-size:68px;font-weight:700;color:#0f172a;line-height:1;">${stats.avg.toFixed(1)}</div>
+          <div style="font-size:15px;color:#0072BC;margin-top:5px;font-family:'Outfit',sans-serif;">out of 5.0 — ${overallCmmi?.label || ""}</div>
+        </div>` : ""}
+        <div style="border-left:1px solid #e2e8f0;padding-left:44px;padding-bottom:6px;">
+          <div style="font-size:10px;color:#94a3b8;font-weight:600;letter-spacing:1.5px;margin-bottom:10px;font-family:'Outfit',sans-serif;">ASSESSMENT COVERAGE</div>
+          <div style="font-size:30px;font-weight:700;color:#0f172a;font-family:'Outfit',sans-serif;">${stats.scoredGoals}<span style="font-size:15px;color:#94a3b8;font-weight:400;"> / ${stats.totalGoals} goals</span></div>
+          <div style="font-size:13px;color:#94a3b8;margin-top:3px;font-family:'Outfit',sans-serif;">${stats.pct}% complete</div>
+        </div>
+      </div>
+      <div style="border-top:1px solid #e2e8f0;padding-top:28px;display:flex;gap:44px;">
+        <div><div style="font-size:9px;color:#94a3b8;letter-spacing:1.5px;margin-bottom:4px;font-family:'Outfit',sans-serif;">PREPARED BY</div><div style="font-size:14px;color:#0f172a;font-weight:500;font-family:'Outfit',sans-serif;">${user.name}</div>${user.role ? `<div style="font-size:11px;color:#64748b;font-family:'Outfit',sans-serif;">${user.role}</div>` : ""}</div>
+        <div><div style="font-size:9px;color:#94a3b8;letter-spacing:1.5px;margin-bottom:4px;font-family:'Outfit',sans-serif;">DATE</div><div style="font-size:14px;color:#0f172a;font-weight:500;font-family:'Outfit',sans-serif;">${date}</div></div>
+        <div><div style="font-size:9px;color:#94a3b8;letter-spacing:1.5px;margin-bottom:4px;font-family:'Outfit',sans-serif;">FRAMEWORK</div><div style="font-size:14px;color:#0f172a;font-weight:500;font-family:'Outfit',sans-serif;">CMMI DMM</div></div>
+      </div>
+    </div>
+
+    <!-- EXECUTIVE SUMMARY -->
+    <div style="padding:44px 28px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;padding-bottom:20px;border-bottom:1.5px solid #f1f5f9;">
+        ${nttLogoBlackHTML(24)}
+        <span style="font-size:10px;font-weight:700;color:#cbd5e1;letter-spacing:2px;font-family:'Outfit',sans-serif;">CMMI DMM ASSESSMENT REPORT</span>
+      </div>
+      <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:2px;margin:0 0 6px;font-family:'Outfit',sans-serif;">EXECUTIVE SUMMARY</p>
+
+      ${aiSummary ? (() => {
+        const cleaned = aiSummary.split('\n').filter(line => !/^\*\*.*\*\*$/.test(line.trim()) && !/^#+\s/.test(line.trim())).join('\n').trim();
+        const paras = cleaned.split(/\n\n+/).filter(Boolean);
+        const body = paras.map((p, i) =>
+          `<p style="${i === 0 ? 'margin:0;' : 'margin:14px 0 0;'}font-size:14px;color:#334155;line-height:1.85;font-family:Outfit,sans-serif;">${p.replace(/\n/g, '<br/>')}</p>`
+        ).join('');
+        return `<div style="margin-bottom:32px;padding:32px 36px;background:#f8fafc;border-radius:14px;border:1.5px solid #e2e8f0;">
+          <h3 style="font-family:'Fraunces',serif;font-size:26px;font-weight:700;color:#0f172a;margin:0 0 20px;line-height:1.2;">Executive Assessment: Data Management Maturity</h3>
+          ${body}
+        </div>`;
+      })() : ""}
+
+      <div style="page-break-inside:avoid;">
+        <div style="background:#f8fafc;border-radius:12px;padding:14px 22px;margin-bottom:20px;border:1.5px solid #e2e8f0;">
+          <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin:0 0 10px;font-family:'Outfit',sans-serif;">CMMI DMM MATURITY SCALE</p>
+          <div style="display:flex;gap:8px;flex-wrap:nowrap;">
+            ${Object.entries(C).map(([lvl,c]) => `<div style="display:flex;align-items:center;gap:6px;background:${c.bg};border:1.5px solid ${c.color}40;border-radius:8px;padding:5px 10px;flex:1;min-width:0;">
+              <span style="width:18px;height:18px;border-radius:4px;background:${c.color};color:white;font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;font-family:'Outfit',sans-serif;flex-shrink:0;">${lvl}</span>
+              <span style="font-size:11px;font-weight:600;color:${c.color};font-family:'Outfit',sans-serif;white-space:nowrap;">${c.label}</span>
+            </div>`).join("")}
+          </div>
+        </div>
+
+        <table style="width:100%;border-collapse:collapse;border:1.5px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-bottom:20px;">
+          <thead><tr style="background:#f8fafc;">
+            <th style="padding:11px 16px;text-align:left;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.2px;font-family:'Outfit',sans-serif;">ASSESSMENT AREA</th>
+            <th style="padding:11px 16px;text-align:center;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.2px;font-family:'Outfit',sans-serif;">MATURITY SCORE</th>
+            <th style="padding:11px 16px;text-align:center;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.2px;font-family:'Outfit',sans-serif;">GOALS SCORED</th>
+            <th style="padding:11px 16px;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.2px;font-family:'Outfit',sans-serif;">COMPLETION</th>
+          </tr></thead>
+          <tbody>${areaRows}</tbody>
+        </table>
+
+        <div style="background:linear-gradient(160deg,#070F26,#0A1E3D);border-radius:16px;padding:24px 32px;display:flex;flex-direction:column;align-items:center;gap:14px;">
+          <p style="font-size:10px;font-weight:700;color:rgba(255,255,255,.35);letter-spacing:2px;margin:0;font-family:'Outfit',sans-serif;">MATURITY PROFILE — ALL ASSESSMENT AREAS</p>
+          ${masterRadarSVG(responses, 240)}
+          <div style="display:flex;flex-wrap:wrap;gap:8px 18px;justify-content:center;max-width:500px;">
+            ${Object.entries(AREAS).map(([aName, area]) => {
+              const ts = getTopicScores(aName, responses).filter(t => t.score > 0);
+              const avg = ts.length > 0 ? ts.reduce((a,b) => a + b.score, 0) / ts.length : null;
+              return `<div style="display:flex;align-items:center;gap:6px;">
+                <span style="width:9px;height:9px;border-radius:50%;background:${area.color};display:inline-block;flex-shrink:0;"></span>
+                <span style="font-size:10px;color:rgba(255,255,255,.55);font-family:'Outfit',sans-serif;">${area.short} — ${aName}</span>
+                ${avg ? `<span style="font-size:10px;font-weight:700;color:${area.color};font-family:'Outfit',sans-serif;">${avg.toFixed(1)}</span>` : ""}
+              </div>`;
+            }).join("")}
+          </div>
+        </div>
+      </div>
+
+      <!-- AREA PAGES -->
+      ${areaDetailPages}
+    </div>
+  `;
+}
+
 // ─── Area Summaries Generator ─────────────────────────────────────────────────
 async function generateSingleAreaSummary(aName, responses) {
   const area = AREAS[aName];
