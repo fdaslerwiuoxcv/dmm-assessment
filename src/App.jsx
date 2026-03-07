@@ -1816,23 +1816,22 @@ Focus each rec on the single most impactful next step for that topic's score.`
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-function Dashboard({ responses, onNavigate, user, onExport }) {
+function Dashboard({ responses, onNavigate, user, onExport, topicRecs, onTopicRecsChange }) {
   const stats = getStats(responses);
   const overallLevel = stats.avg ? Math.round(stats.avg) : null;
   const overallCmmi = overallLevel ? CMMI[overallLevel] : null;
-  const [topicRecs, setTopicRecs] = useState(null);
   const [recsLoading, setRecsLoading] = useState(false);
   const [recsError, setRecsError] = useState("");
 
-  // Load cached recs from storage on mount
+  // Load cached recs from storage on first mount (only if not already in parent state)
   useEffect(() => {
+    if (topicRecs) return; // already have them in parent state
     (async () => {
       try {
         const cached = await window.storage.get("dmm_topic_recs");
-        // storage.get throws if key doesn't exist; if we get here, key exists
         if (cached?.value) {
           const parsed = JSON.parse(cached.value);
-          if (parsed && typeof parsed === "object") setTopicRecs(parsed);
+          if (parsed && typeof parsed === "object") onTopicRecsChange(parsed);
         }
       } catch (e) {
         // Key not found or parse error — stay in "not generated" state
@@ -1845,10 +1844,13 @@ function Dashboard({ responses, onNavigate, user, onExport }) {
     setRecsError("");
     try {
       const recs = await generateTopicRecs(responses);
-      setTopicRecs(recs);
-      // Confirm write succeeded before treating as cached
-      const result = await window.storage.set("dmm_topic_recs", JSON.stringify(recs));
-      if (!result) console.warn("dmm_topic_recs storage write returned null — cache may not persist");
+      onTopicRecsChange(recs);
+      // Cache to storage independently — a write failure shouldn't surface as a user error
+      try {
+        await window.storage.set("dmm_topic_recs", JSON.stringify(recs));
+      } catch (storageErr) {
+        console.warn("Could not cache recommendations to storage:", storageErr);
+      }
     } catch (e) {
       console.error("Topic recs error:", e);
       setRecsError("Failed to generate recommendations. Please try again.");
@@ -2242,9 +2244,15 @@ function AssessmentView({ areaName, responses, analyzing, onGoalComment, onQuest
 }
 
 // ─── Main App Shell ───────────────────────────────────────────────────────────
-function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment, onAnalyze, onLogout }) {
+function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment, onAnalyze, onLogout, onClearTopicRecs }) {
   const [activeView, setActiveView] = useState("dashboard");
   const [showReport, setShowReport] = useState(false);
+  const [topicRecs, setTopicRecs] = useState(null);
+
+  // Expose a way for Root to clear topicRecs when scores change
+  useEffect(() => {
+    if (onClearTopicRecs) onClearTopicRecs(() => setTopicRecs(null));
+  }, []);
   const stats = getStats(responses);
 
   const navItem = (label, view, icon, color) => {
@@ -2319,7 +2327,7 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
       {/* Content */}
       <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
         {activeView === "dashboard"
-          ? <Dashboard responses={responses} onNavigate={v => setActiveView(v)} user={user} onExport={() => setShowReport(true)} />
+          ? <Dashboard responses={responses} onNavigate={v => setActiveView(v)} user={user} onExport={() => setShowReport(true)} topicRecs={topicRecs} onTopicRecsChange={setTopicRecs} />
           : <AssessmentView
               areaName={activeView}
               responses={responses}
@@ -2366,11 +2374,15 @@ export default function App() {
     }
   }, [user, screen]);
 
+  const clearTopicRecsRef = useRef(null);
+
   const saveResponses = async (r) => {
     setResponses(r);
     try { await window.storage.set("dmm_responses", JSON.stringify(r)); } catch (e) {}
     // Invalidate cached recommendations so they reflect new scores
     try { await window.storage.delete("dmm_topic_recs"); } catch (e) {}
+    // Also clear in-memory recs in MainApp
+    if (clearTopicRecsRef.current) clearTopicRecsRef.current();
   };
 
   const handleLogin = async (name, org, role) => {
@@ -2485,6 +2497,7 @@ Respond ONLY with a valid JSON object — no preamble, no markdown:
         onQuestionComment={handleQuestionComment}
         onAnalyze={handleAnalyze}
         onLogout={handleLogout}
+        onClearTopicRecs={fn => { clearTopicRecsRef.current = fn; }}
       />
     </ErrorBoundary>
   );
