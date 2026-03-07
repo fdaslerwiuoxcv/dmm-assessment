@@ -1104,13 +1104,19 @@ function areaRadarSVG(aName, responses, size = 300) {
     ${labels}
   </svg>`;
 
-  // Legend rows: number + full topic name + score
+  // Legend rows: number + full topic name + score + level label
+  const C_LEVELS = { 1:"Performed", 2:"Managed", 3:"Defined", 4:"Measured", 5:"Optimized" };
+  const C_COLORS = { 1:"#B22000", 2:"#E42600", 3:"#CC7700", 4:"#0072BC", 5:"#068941" };
   const legendRows = spokes.map(s => {
     const scoreText = s.score ? s.score.toFixed(1) : "—";
+    const lvl = s.score ? Math.min(5, Math.max(1, Math.round(s.score))) : null;
+    const lvlLabel = lvl ? C_LEVELS[lvl] : "";
+    const lvlColor = lvl ? C_COLORS[lvl] : "#94a3b8";
     return `<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px;">
       <span style="width:16px;height:16px;border-radius:3px;background:${area.color};color:white;font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'Outfit',sans-serif;">${s.label}</span>
       <span style="font-size:11px;color:#334155;font-family:'Outfit',sans-serif;flex:1;">${s.fullLabel}</span>
-      <span style="font-size:11px;font-weight:700;color:${area.color};font-family:'Outfit',sans-serif;">${scoreText}</span>
+      <span style="font-size:11px;font-weight:700;color:${area.color};font-family:'Outfit',sans-serif;min-width:28px;text-align:right;">${scoreText}</span>
+      <span style="font-size:10px;font-weight:600;color:${lvlColor};font-family:'Outfit',sans-serif;min-width:58px;">${lvlLabel}</span>
     </div>`;
   }).join("");
 
@@ -1269,14 +1275,6 @@ function buildAreaPages(responses, areaSummaries, C, badge, bar, stats) {
     const topicScores = getTopicScores(aName, responses);
 
     // ── Topic score table ──────────────────────────────────────────────────────
-    const topicRows = topicScores.map(t => {
-      const scored = t.score > 0;
-      return `<tr style="border-bottom:1px solid #f1f5f9;">
-        <td style="padding:9px 14px;font-size:13px;font-weight:500;color:#334155;font-family:'Outfit',sans-serif;">${t.topic}</td>
-        <td style="padding:9px 14px;text-align:right;">${scored ? badge(t.score) : '<span style="color:#cbd5e1;font-size:12px;font-family:Outfit,sans-serif;">Not scored</span>'}</td>
-      </tr>`;
-    }).join("");
-
     // ── Area radar SVG ────────────────────────────────────────────────────────
     const radarSvg = areaRadarSVG(aName, responses, 320);
 
@@ -1325,27 +1323,10 @@ function buildAreaPages(responses, areaSummaries, C, badge, bar, stats) {
         </div>
       </div>
 
-      <!-- Two-column layout: topic scores left, radar right -->
-      <div style="display:flex;gap:24px;margin-bottom:28px;align-items:flex-start;">
-
-        <!-- Topic scores -->
-        <div style="flex:1;min-width:0;">
-          <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin:0 0 10px;font-family:'Outfit',sans-serif;">TOPIC SCORES</p>
-          <table style="width:100%;border-collapse:collapse;border:1.5px solid #e2e8f0;border-radius:10px;overflow:hidden;">
-            <thead><tr style="background:#f8fafc;">
-              <th style="padding:8px 14px;text-align:left;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1px;font-family:'Outfit',sans-serif;">TOPIC</th>
-              <th style="padding:8px 14px;text-align:right;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1px;font-family:'Outfit',sans-serif;">SCORE</th>
-            </tr></thead>
-            <tbody>${topicRows}</tbody>
-          </table>
-        </div>
-
-        <!-- Radar chart -->
-        <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:8px;">
-          <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin:0;font-family:'Outfit',sans-serif;">MATURITY PROFILE</p>
-          ${radarSvg}
-        </div>
-
+      <!-- Centered radar chart + legend -->
+      <div style="display:flex;flex-direction:column;align-items:center;margin-bottom:28px;">
+        <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin:0 0 10px;font-family:'Outfit',sans-serif;">MATURITY PROFILE</p>
+        ${radarSvg}
       </div>
 
       <!-- AI Assessment section -->
