@@ -2126,8 +2126,163 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, ca
 
 // ─── Topic Recs Generator ─────────────────────────────────────────────────────
 
-// ─── Dashboard ────────────────────────────────────────────────────────────────
+// ─── Dashboard Summary ────────────────────────────────────────────────────────
 function Dashboard({ responses, onNavigate, user, onExport }) {
+  const stats = getStats(responses);
+  const areaList = getAllAreaScores(responses);
+  const overallLevel = stats.avg ? Math.round(stats.avg) : null;
+  const overallCmmi = overallLevel ? CMMI[overallLevel] : null;
+
+  return (
+    <div style={{ padding: "28px 32px", maxWidth: 960, margin: "0 auto" }}>
+      {/* Header */}
+      <div style={{ marginBottom: 28 }}>
+        <div style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", marginBottom: 4 }}>
+          Assessment Dashboard
+        </div>
+        <div style={{ fontSize: 14, color: "#64748B" }}>
+          {user.org} · CMMI DMM Maturity Overview
+        </div>
+      </div>
+
+      {/* Top KPI row */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 24 }}>
+        {/* Overall score */}
+        <div style={{ background: "white", borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,.06)", border: "1px solid #E2E8F0" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.2, color: "#94A3B8", marginBottom: 10 }}>OVERALL SCORE</div>
+          {stats.avg ? (
+            <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+              <span style={{ fontSize: 36, fontWeight: 800, color: overallCmmi?.color }}>{stats.avg.toFixed(1)}</span>
+              <span style={{ fontSize: 14, color: "#94A3B8" }}>/ 5.0</span>
+            </div>
+          ) : (
+            <div style={{ fontSize: 24, fontWeight: 700, color: "#CBD5E1" }}>—</div>
+          )}
+          {overallCmmi && (
+            <div style={{ marginTop: 6, display: "inline-flex", alignItems: "center", gap: 6, background: overallCmmi.bg, borderRadius: 20, padding: "3px 10px" }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: overallCmmi.color, display: "inline-block" }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: overallCmmi.color }}>{overallCmmi.label}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Progress */}
+        <div style={{ background: "white", borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,.06)", border: "1px solid #E2E8F0" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.2, color: "#94A3B8", marginBottom: 10 }}>COMPLETION</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+            <span style={{ fontSize: 36, fontWeight: 800, color: "#0072BC" }}>{stats.pct}%</span>
+          </div>
+          <div style={{ marginTop: 8, background: "#EFF6FF", borderRadius: 4, height: 6, overflow: "hidden" }}>
+            <div style={{ width: `${stats.pct}%`, background: "linear-gradient(90deg, #0072BC, #009AA4)", height: "100%", borderRadius: 4, transition: "width .6s" }} />
+          </div>
+          <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 6 }}>{stats.scoredGoals} of {stats.totalGoals} goals scored</div>
+        </div>
+
+        {/* Areas summary */}
+        <div style={{ background: "white", borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,.06)", border: "1px solid #E2E8F0" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.2, color: "#94A3B8", marginBottom: 10 }}>AREAS ASSESSED</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+            <span style={{ fontSize: 36, fontWeight: 800, color: "#0F172A" }}>
+              {areaList.filter(a => a.score > 0).length}
+            </span>
+            <span style={{ fontSize: 14, color: "#94A3B8" }}>/ {areaList.length}</span>
+          </div>
+          <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 6 }}>
+            {areaList.filter(a => a.score > 0).length === areaList.length
+              ? "All areas have scores"
+              : `${areaList.length - areaList.filter(a => a.score > 0).length} area(s) pending`}
+          </div>
+        </div>
+      </div>
+
+      {/* Radar + Area cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 20, alignItems: "start" }}>
+        {/* Radar */}
+        <div style={{ background: "#070F26", borderRadius: 14, padding: "20px 16px", boxShadow: "0 1px 4px rgba(0,0,0,.1)" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,.35)", letterSpacing: 1.2, marginBottom: 10 }}>MATURITY RADAR</div>
+          <MasterRadarChart responses={responses} />
+        </div>
+
+        {/* Area score cards */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {areaList.map(({ area, score, color }) => {
+            const lvl = score > 0 ? Math.round(score) : null;
+            const cmmi = lvl ? CMMI[lvl] : null;
+            const areaProgress = stats.areaStats[area];
+            const pct = areaProgress?.total > 0 ? Math.round((areaProgress.scored / areaProgress.total) * 100) : 0;
+            return (
+              <button
+                key={area}
+                onClick={() => onNavigate(area)}
+                style={{ background: "white", border: "1px solid #E2E8F0", borderRadius: 12, padding: "14px 18px", cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 14, transition: "box-shadow .15s, border-color .15s", fontFamily: "inherit" }}
+                onMouseOver={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,.08)"; e.currentTarget.style.borderColor = color; }}
+                onMouseOut={e => { e.currentTarget.style.boxShadow = "none"; e.currentTarget.style.borderColor = "#E2E8F0"; }}
+              >
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: score > 0 ? color : "#F1F5F9", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <span style={{ fontSize: 18 }}>{Object.values(AREAS).find((_, i) => Object.keys(AREAS)[i] === area)?.icon || "📊"}</span>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: "#0F172A", marginBottom: 3 }}>{area}</div>
+                  <div style={{ background: "#F1F5F9", borderRadius: 3, height: 4, overflow: "hidden" }}>
+                    <div style={{ width: `${pct}%`, background: color, height: "100%", borderRadius: 3, transition: "width .6s" }} />
+                  </div>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  {score > 0 ? (
+                    <>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: cmmi?.color }}>{score.toFixed(1)}</div>
+                      <div style={{ fontSize: 11, color: cmmi?.color, fontWeight: 600 }}>{cmmi?.label}</div>
+                    </>
+                  ) : (
+                    <div style={{ fontSize: 13, color: "#CBD5E1", fontWeight: 600 }}>Not scored</div>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Export CTA */}
+      {stats.scoredGoals > 0 && (
+        <div style={{ marginTop: 24, background: "linear-gradient(135deg, #0072BC, #009AA4)", borderRadius: 14, padding: "20px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "white", marginBottom: 3 }}>Ready to export your report?</div>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,.7)" }}>Generate a full AI-powered PDF with recommendations and projections.</div>
+          </div>
+          <button
+            onClick={onExport}
+            style={{ background: "white", border: "none", borderRadius: 10, padding: "10px 20px", fontSize: 13, fontWeight: 700, color: "#0072BC", cursor: "pointer", whiteSpace: "nowrap", fontFamily: "inherit" }}
+          >
+            ⬇ Export PDF Report
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main App Shell ───────────────────────────────────────────────────────────
+function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment, onAnalyze, onLogout, onClearAICache }) {
+  const [activeView, setActiveView] = useState("dashboard");
+  const [showReport, setShowReport] = useState(false);
+  const [reportSummary, setReportSummary] = useState(null);
+  const [reportRecs, setReportRecs] = useState([]);
+  const [reportAreaSummaries, setReportAreaSummaries] = useState({});
+  const [reportProjectedScores, setReportProjectedScores] = useState(null);
+
+  // Expose cache-clear to parent
+  useEffect(() => {
+    if (onClearAICache) {
+      onClearAICache(() => {
+        setReportSummary(null);
+        setReportRecs([]);
+        setReportAreaSummaries({});
+        setReportProjectedScores(null);
+      });
+    }
+  }, [onClearAICache]);
+
   const stats = getStats(responses);
   const overallLevel = stats.avg ? Math.round(stats.avg) : null;
   const overallCmmi = overallLevel ? CMMI[overallLevel] : null;
