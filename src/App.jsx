@@ -1041,35 +1041,33 @@ function masterRadarSVG(responses, size = 300) {
   return radarSVG({ spokes, size, fillColor: "#0072BC", bgDark: true, labelColor: "rgba(255,255,255,0.8)" });
 }
 
-function areaRadarSVG(aName, responses, size = 300) {
+function areaRadarSVG(aName, responses, size = 300, projectedScores = null) {
   const area = AREAS[aName];
+  const C_LEVELS = { 1:"Performed", 2:"Managed", 3:"Defined", 4:"Measured", 5:"Optimized" };
+  const C_COLORS = { 1:"#B22000", 2:"#E42600", 3:"#CC7700", 4:"#0072BC", 5:"#068941" };
+
   const spokes = area.topics.map((topic, tIdx) => {
     const scored = topic.goals.map((_,gIdx) => responses[rKey(aName,tIdx,"goal",gIdx)]?.score).filter(Boolean);
     const avg = scored.length > 0 ? scored.reduce((a,b) => a+b,0) / scored.length : 0;
-    return { label: String(tIdx + 1), fullLabel: topic.name, score: avg || null, color: area.color };
+    const proj = projectedScores ? (projectedScores[topic.name] ?? projectedScores[Object.keys(projectedScores).find(k => k.toLowerCase().includes(topic.name.toLowerCase().slice(0,6))) ?? ""] ?? null) : null;
+    return { label: String(tIdx + 1), fullLabel: topic.name, score: avg || null, projected: proj, color: area.color };
   });
 
-  // Build radar SVG with numbered labels
   const cx = size / 2, cy = size / 2;
   const maxR = size * 0.36;
   const n = spokes.length;
   const angleStep = 360 / n;
-  const gridColor = "#e2e8f0";
-  const gridLabelColor = "#94a3b8";
 
   const ringsSVG = [1,2,3,4,5].map(i => {
     const r = (i / 5) * maxR;
-    const pts = Array.from({length:n}, (_,k) => {
-      const p = polarToXY(k * angleStep, r, cx, cy);
-      return `${p.x},${p.y}`;
-    }).join(" ");
-    return `<polygon points="${pts}" fill="none" stroke="${gridColor}" stroke-width="${i === 5 ? 1.5 : 0.8}" />`;
+    const pts = Array.from({length:n}, (_,k) => { const p = polarToXY(k * angleStep, r, cx, cy); return `${p.x},${p.y}`; }).join(" ");
+    return `<polygon points="${pts}" fill="none" stroke="#e2e8f0" stroke-width="${i === 5 ? 1.5 : 0.8}" />`;
   }).join("\n");
 
   const ringLabels = [1,2,3,4,5].map(i => {
     const r = (i / 5) * maxR;
     const p = polarToXY(0, r, cx, cy);
-    return `<text x="${p.x + 3}" y="${p.y - 2}" font-size="8" fill="${gridLabelColor}" font-family="Outfit,sans-serif">${i}</text>`;
+    return `<text x="${p.x + 3}" y="${p.y - 2}" font-size="8" fill="#94a3b8" font-family="Outfit,sans-serif">${i}</text>`;
   }).join("\n");
 
   const spokeLines = Array.from({length:n}, (_,i) => {
@@ -1077,17 +1075,23 @@ function areaRadarSVG(aName, responses, size = 300) {
     return `<line x1="${cx}" y1="${cy}" x2="${p.x}" y2="${p.y}" stroke="#f1f5f9" stroke-width="1" />`;
   }).join("\n");
 
-  const dataPoints = spokes.map((s, i) => {
-    const score = Math.min(5, Math.max(0, s.score || 0));
-    return polarToXY(i * angleStep, (score / 5) * maxR, cx, cy);
-  });
+  // Current state polygon
+  const dataPoints = spokes.map((s, i) => polarToXY(i * angleStep, (Math.min(5, Math.max(0, s.score || 0)) / 5) * maxR, cx, cy));
   const polyPts = dataPoints.map(p => `${p.x},${p.y}`).join(" ");
-
   const dots = dataPoints.map((p, i) =>
     spokes[i].score ? `<circle cx="${p.x}" cy="${p.y}" r="4" fill="${area.color}" stroke="white" stroke-width="1.5" />` : ""
   ).join("\n");
 
-  // Numbered spoke labels — compact, never clip
+  // Projected state polygon (dashed, lighter)
+  const hasProjections = spokes.some(s => s.projected !== null);
+  const projPoints = hasProjections
+    ? spokes.map((s, i) => polarToXY(i * angleStep, (Math.min(5, Math.max(0, s.projected ?? s.score ?? 0)) / 5) * maxR, cx, cy))
+    : [];
+  const projPts = projPoints.map(p => `${p.x},${p.y}`).join(" ");
+  const projDots = hasProjections ? projPoints.map((p, i) =>
+    spokes[i].projected !== null ? `<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="white" stroke="${area.color}" stroke-width="2" stroke-dasharray="2,1" opacity="0.85" />` : ""
+  ).join("\n") : "";
+
   const labelPad = 18;
   const labels = spokes.map((s, i) => {
     const p = polarToXY(i * angleStep, maxR + labelPad, cx, cy);
@@ -1100,30 +1104,72 @@ function areaRadarSVG(aName, responses, size = 300) {
     ${ringLabels}
     ${spokeLines}
     <polygon points="${polyPts}" fill="${area.color}22" stroke="${area.color}" stroke-width="2" stroke-linejoin="round" />
+    ${hasProjections ? `<polygon points="${projPts}" fill="${area.color}0a" stroke="${area.color}" stroke-width="1.5" stroke-dasharray="5,3" stroke-linejoin="round" opacity="0.7" />` : ""}
     ${dots}
+    ${projDots}
     ${labels}
   </svg>`;
 
-  // Legend rows: number + full topic name + score + level label
-  const C_LEVELS = { 1:"Performed", 2:"Managed", 3:"Defined", 4:"Measured", 5:"Optimized" };
-  const C_COLORS = { 1:"#B22000", 2:"#E42600", 3:"#CC7700", 4:"#0072BC", 5:"#068941" };
+  // Legend header
+  const legendHeader = `<div style="display:flex;align-items:center;gap:7px;margin-bottom:6px;padding-bottom:5px;border-bottom:1px solid #e2e8f0;">
+    <span style="width:16px;flex-shrink:0;"></span>
+    <span style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:0.8px;font-family:'Outfit',sans-serif;flex:1;">TOPIC</span>
+    <span style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:0.8px;font-family:'Outfit',sans-serif;min-width:30px;text-align:right;">NOW</span>
+    ${hasProjections ? `<span style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:0.8px;font-family:'Outfit',sans-serif;min-width:30px;text-align:right;">PROJ.</span>` : ""}
+    <span style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:0.8px;font-family:'Outfit',sans-serif;min-width:62px;">LEVEL</span>
+  </div>`;
+
   const legendRows = spokes.map(s => {
     const scoreText = s.score ? s.score.toFixed(1) : "—";
     const lvl = s.score ? Math.min(5, Math.max(1, Math.round(s.score))) : null;
-    const lvlLabel = lvl ? C_LEVELS[lvl] : "";
     const lvlColor = lvl ? C_COLORS[lvl] : "#94a3b8";
-    return `<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px;">
+
+    // Projected score + delta
+    const projScore = s.projected !== null ? s.projected : null;
+    const projLvl = projScore ? Math.min(5, Math.max(1, Math.round(projScore))) : null;
+    const projLvlLabel = projLvl ? C_LEVELS[projLvl] : "";
+    const projLvlColor = projLvl ? C_COLORS[projLvl] : "#94a3b8";
+    const delta = (projScore && s.score) ? (projScore - s.score) : null;
+    const deltaStr = delta !== null ? (delta > 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1)) : "";
+
+    const levelDisplay = hasProjections && projScore
+      ? `<div style="display:flex;flex-direction:column;gap:1px;min-width:62px;">
+          <span style="font-size:10px;font-weight:600;color:${lvlColor};font-family:'Outfit',sans-serif;">${lvl ? C_LEVELS[lvl] : ""}</span>
+          <span style="font-size:9px;color:${projLvlColor};font-family:'Outfit',sans-serif;">→ ${projLvlLabel}</span>
+        </div>`
+      : `<span style="font-size:10px;font-weight:600;color:${lvlColor};font-family:'Outfit',sans-serif;min-width:62px;">${lvl ? C_LEVELS[lvl] : ""}</span>`;
+
+    return `<div style="display:flex;align-items:center;gap:7px;margin-bottom:5px;">
       <span style="width:16px;height:16px;border-radius:3px;background:${area.color};color:white;font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'Outfit',sans-serif;">${s.label}</span>
       <span style="font-size:11px;color:#334155;font-family:'Outfit',sans-serif;flex:1;">${s.fullLabel}</span>
-      <span style="font-size:11px;font-weight:700;color:${area.color};font-family:'Outfit',sans-serif;min-width:28px;text-align:right;">${scoreText}</span>
-      <span style="font-size:10px;font-weight:600;color:${lvlColor};font-family:'Outfit',sans-serif;min-width:58px;">${lvlLabel}</span>
+      <span style="font-size:11px;font-weight:700;color:${area.color};font-family:'Outfit',sans-serif;min-width:30px;text-align:right;">${scoreText}</span>
+      ${hasProjections ? `<span style="font-size:11px;font-weight:700;color:${projLvlColor ?? area.color};font-family:'Outfit',sans-serif;min-width:30px;text-align:right;">${projScore ? projScore.toFixed(1) : "—"}${deltaStr ? `<tspan style="font-size:9px;color:#94a3b8;"> (${deltaStr})</tspan>` : ""}</span>` : ""}
+      ${levelDisplay}
     </div>`;
   }).join("");
 
-  return `<div style="display:flex;flex-direction:column;align-items:center;">
+  // Disclaimer note if projections are shown
+  const disclaimer = hasProjections ? `<div style="margin-top:8px;padding-top:6px;border-top:1px solid #e2e8f0;font-size:9px;color:#94a3b8;font-family:'Outfit',sans-serif;font-style:italic;line-height:1.4;">
+    ⚠ Projected scores are estimated illustrations of potential improvement if recommendations are implemented. They are not guaranteed outcomes and should be treated as directional guidance only.
+  </div>` : "";
+
+  // Chart legend key
+  const chartKey = hasProjections ? `<div style="display:flex;gap:16px;justify-content:center;margin-bottom:6px;">
+    <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:#64748b;font-family:'Outfit',sans-serif;">
+      <svg width="24" height="10"><line x1="0" y1="5" x2="24" y2="5" stroke="${area.color}" stroke-width="2"/></svg> Current state
+    </div>
+    <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:#64748b;font-family:'Outfit',sans-serif;">
+      <svg width="24" height="10"><line x1="0" y1="5" x2="24" y2="5" stroke="${area.color}" stroke-width="1.5" stroke-dasharray="4,2" opacity="0.7"/></svg> Projected (post-recommendation)
+    </div>
+  </div>` : "";
+
+  return `<div style="display:flex;flex-direction:column;align-items:center;width:${size}px;">
+    ${chartKey}
     ${chartSVG}
-    <div style="width:${size}px;margin-top:6px;padding:8px 10px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+    <div style="width:100%;margin-top:6px;padding:8px 10px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+      ${legendHeader}
       ${legendRows}
+      ${disclaimer}
     </div>
   </div>`;
 }
@@ -1268,7 +1314,7 @@ function recommendationsSectionHTML(recs) {
 }
 
 // ─── PDF Report Builder ───────────────────────────────────────────────────────
-function buildAreaPages(responses, areaSummaries, C, badge, bar, stats) {
+function buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projectedScores = null) {
   return Object.entries(AREAS).map(([aName, area]) => {
     const as_ = stats.areaStats[aName];
     const areaAvg = as_.avg;
@@ -1276,7 +1322,8 @@ function buildAreaPages(responses, areaSummaries, C, badge, bar, stats) {
 
     // ── Topic score table ──────────────────────────────────────────────────────
     // ── Area radar SVG ────────────────────────────────────────────────────────
-    const radarSvg = areaRadarSVG(aName, responses, 320);
+    const areaProjections = projectedScores ? (projectedScores[aName] ?? null) : null;
+    const radarSvg = areaRadarSVG(aName, responses, 320, areaProjections);
 
     // ── AI topic narratives ───────────────────────────────────────────────────
     const areaNarratives = areaSummaries ? (areaSummaries[aName] || areaSummaries[Object.keys(areaSummaries).find(k => k.toLowerCase().includes(aName.toLowerCase().slice(0,6))) || ""] || null) : null;
@@ -1339,7 +1386,7 @@ function buildAreaPages(responses, areaSummaries, C, badge, bar, stats) {
   }).join("");
 }
 
-function buildReportHTML(user, responses, aiSummary = null, recommendations = null, areaSummaries = null) {
+function buildReportHTML(user, responses, aiSummary = null, recommendations = null, areaSummaries = null, projectedScores = null) {
   const stats = getStats(responses);
   const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   const overallLevel = stats.avg ? Math.min(5, Math.max(1, Math.round(stats.avg))) : null;
@@ -1379,7 +1426,7 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
     </tr>`;
   }).join("");
 
-  const areaDetailPages = buildAreaPages(responses, areaSummaries, C, badge, bar, stats);
+  const areaDetailPages = buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projectedScores);
 
   return `
     <style>
@@ -1494,6 +1541,90 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
     <!-- RECOMMENDATIONS (optional) -->
     ${recommendations && recommendations.length > 0 ? recommendationsSectionHTML(recommendations) : ""}
   `;
+}
+
+// ─── Projected Scores Generator ───────────────────────────────────────────────
+async function generateSingleAreaProjection(aName, responses) {
+  const area = AREAS[aName];
+
+  const topicBlocks = area.topics.map((topic, tIdx) => {
+    const scored = topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean);
+    if (scored.length === 0) return null;
+    const avg = (scored.reduce((a, b) => a + b, 0) / scored.length).toFixed(1);
+
+    const goalLines = topic.goals.map((goalText, gIdx) => {
+      const r = responses[rKey(aName, tIdx, "goal", gIdx)];
+      if (!r?.score) return null;
+      const lines = [`    Goal ${gIdx + 1} (${r.score}/5): ${goalText}`];
+      if (r.comment)   lines.push(`      Current state: ${r.comment}`);
+      if (r.rationale) lines.push(`      Rationale: ${r.rationale}`);
+      return lines.join("\n");
+    }).filter(Boolean);
+
+    return `  Topic: ${topic.name} (current avg ${avg}/5)\n${goalLines.join("\n")}`;
+  }).filter(Boolean);
+
+  if (topicBlocks.length === 0) return null;
+
+  const res = await fetch("/api/ai", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 800,
+      messages: [{
+        role: "user",
+        content: `You are a senior CMMI DMM assessor estimating realistic maturity improvements for a client report.
+
+For each topic below, estimate the projected maturity score (on the 1.0–5.0 CMMI scale) achievable if targeted recommendations are implemented. Apply these rules strictly:
+
+RULES:
+- Be conservative. A single round of improvements typically advances a topic by 0.3–0.8 points, rarely more than 1.0
+- Never project above 5.0 or below the current score
+- Base projections only on the evidence in the comments and rationales — do not assume capabilities not described
+- If the current score is already ≥ 4.0, cap projected improvement at 0.3 unless there is clear evidence of near-readiness for the next level
+- If a topic has no scored goals, omit it from the response
+
+AREA: ${aName}
+${topicBlocks.join("\n\n")}
+
+Return ONLY a valid JSON object mapping topic name to projected score (a number). No preamble, no markdown:
+{ "Topic Name": 2.8 }`
+      }]
+    })
+  });
+
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  const raw = data.content.map(c => c.text || "").join("").trim();
+  const clean = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+  const parsed = JSON.parse(clean);
+  // Validate: ensure all values are numbers within range
+  const validated = {};
+  Object.entries(parsed).forEach(([k, v]) => {
+    const n = parseFloat(v);
+    if (!isNaN(n) && n >= 1.0 && n <= 5.0) validated[k] = Math.round(n * 10) / 10;
+  });
+  return Object.keys(validated).length > 0 ? validated : null;
+}
+
+async function generateProjectedScores(responses) {
+  const results = await Promise.allSettled(
+    Object.keys(AREAS).map(aName =>
+      generateSingleAreaProjection(aName, responses).then(result => ({ aName, result }))
+    )
+  );
+
+  const projections = {};
+  results.forEach(r => {
+    if (r.status === "fulfilled" && r.value?.result) {
+      projections[r.value.aName] = r.value.result;
+    } else if (r.status === "rejected") {
+      console.error("Projection failed for area:", r.reason?.message || r.reason);
+    }
+  });
+
+  return Object.keys(projections).length > 0 ? projections : null;
 }
 
 // ─── Area Summaries Generator ─────────────────────────────────────────────────
@@ -1768,19 +1899,20 @@ function printRecsOnly(recs, user) {
   openPrintWindow(html, `${dateStamp()}_NTT_DATA_Action_Plan`);
 }
 
-function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, cachedAreaSummaries, onSummaryGenerated, onRecsGenerated, onAreaSummariesGenerated }) {
-  const [status, setStatus] = useState("generating"); // generating | ready | error
+function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, cachedAreaSummaries, cachedProjectedScores, onSummaryGenerated, onRecsGenerated, onAreaSummariesGenerated, onProjectedScoresGenerated }) {
+  const [status, setStatus] = useState("generating");
   const [errorMsg, setErrorMsg] = useState("");
   const [aiError, setAiError] = useState("");
   const [includeRecs, setIncludeRecs] = useState(true);
   const [html, setHtml] = useState("");
-  const summaryRef = useRef(null);
-  const recsRef    = useRef(null);
-  const areaSummariesRef = useRef(null);
+  const summaryRef         = useRef(null);
+  const recsRef            = useRef(null);
+  const areaSummariesRef   = useRef(null);
+  const projectedScoresRef = useRef(null);
 
-  const rebuild = (summary, recs, withRecs, areaSummaries) => {
+  const rebuild = (summary, recs, withRecs, areaSummaries, projectedScores) => {
     try {
-      setHtml(buildReportHTML(user, responses, summary, withRecs ? recs : null, areaSummaries));
+      setHtml(buildReportHTML(user, responses, summary, withRecs ? recs : null, areaSummaries, projectedScores));
     } catch (e) {
       console.error("buildReportHTML failed:", e);
       setErrorMsg(e.message || String(e));
@@ -1789,23 +1921,22 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, ca
   };
 
   useEffect(() => {
-    // Render static report immediately
     try {
-      setHtml(buildReportHTML(user, responses, null, null, null));
+      setHtml(buildReportHTML(user, responses, null, null, null, null));
     } catch (e) {
-      console.error("Initial buildReportHTML failed:", e);
       setErrorMsg(e.message || String(e));
       setStatus("error");
       return;
     }
 
-    // If all three cached values exist, skip all API calls
-    if (cachedSummary && cachedRecs && cachedAreaSummaries) {
-      summaryRef.current = cachedSummary;
-      recsRef.current    = cachedRecs;
-      areaSummariesRef.current = cachedAreaSummaries;
+    // If all four cached values exist, skip all API calls
+    if (cachedSummary && cachedRecs && cachedAreaSummaries && cachedProjectedScores) {
+      summaryRef.current         = cachedSummary;
+      recsRef.current            = cachedRecs;
+      areaSummariesRef.current   = cachedAreaSummaries;
+      projectedScoresRef.current = cachedProjectedScores;
       try {
-        setHtml(buildReportHTML(user, responses, cachedSummary, null, cachedAreaSummaries));
+        setHtml(buildReportHTML(user, responses, cachedSummary, null, cachedAreaSummaries, cachedProjectedScores));
         setStatus("ready");
       } catch (e) {
         setErrorMsg(e.message || String(e));
@@ -1814,31 +1945,34 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, ca
       return;
     }
 
-    // Make only the calls we need
-    const summaryCall      = cachedSummary       ? Promise.resolve(cachedSummary)       : generateAISummary(user, responses);
-    const recsCall         = cachedRecs           ? Promise.resolve(cachedRecs)           : generateRecommendations(user, responses);
-    const areaSummaryCall  = cachedAreaSummaries  ? Promise.resolve(cachedAreaSummaries)  : generateAreaSummaries(responses);
+    const summaryCall      = cachedSummary          ? Promise.resolve(cachedSummary)          : generateAISummary(user, responses);
+    const recsCall         = cachedRecs              ? Promise.resolve(cachedRecs)              : generateRecommendations(user, responses);
+    const areaSummaryCall  = cachedAreaSummaries     ? Promise.resolve(cachedAreaSummaries)     : generateAreaSummaries(responses);
+    const projectionCall   = cachedProjectedScores   ? Promise.resolve(cachedProjectedScores)   : generateProjectedScores(responses);
 
-    Promise.allSettled([summaryCall, recsCall, areaSummaryCall]).then(([sRes, rRes, asRes]) => {
-      const summary      = (sRes.status  === "fulfilled" && sRes.value)  ? sRes.value  : null;
-      const recs         = (rRes.status  === "fulfilled" && rRes.value)  ? rRes.value  : null;
-      const areaSummaries = (asRes.status === "fulfilled" && asRes.value) ? asRes.value : null;
+    Promise.allSettled([summaryCall, recsCall, areaSummaryCall, projectionCall]).then(([sRes, rRes, asRes, pRes]) => {
+      const summary        = (sRes.status  === "fulfilled" && sRes.value)  ? sRes.value  : null;
+      const recs           = (rRes.status  === "fulfilled" && rRes.value)  ? rRes.value  : null;
+      const areaSummaries  = (asRes.status === "fulfilled" && asRes.value) ? asRes.value : null;
+      const projectedScores = (pRes.status === "fulfilled" && pRes.value)  ? pRes.value  : null;
 
-      if (sRes.status  === "rejected") { console.error("AI summary error:", sRes.reason?.message || sRes.reason); setAiError(`Summary failed: ${sRes.reason?.message || sRes.reason || "unknown"}`); }
-      else if (!sRes.value) { console.error("AI summary returned empty"); setAiError("Summary returned empty"); }
-      if (rRes.status  === "rejected") console.error("AI recs error:", rRes.reason?.message || rRes.reason);
+      if (sRes.status  === "rejected") { console.error("AI summary error:",      sRes.reason?.message  || sRes.reason);  setAiError(`Summary failed: ${sRes.reason?.message || "unknown"}`); }
+      if (rRes.status  === "rejected") console.error("AI recs error:",           rRes.reason?.message  || rRes.reason);
       if (asRes.status === "rejected") console.error("AI area summaries error:", asRes.reason?.message || asRes.reason);
+      if (pRes.status  === "rejected") console.error("AI projections error:",    pRes.reason?.message  || pRes.reason);
 
-      summaryRef.current = summary;
-      recsRef.current    = recs;
-      areaSummariesRef.current = areaSummaries;
+      summaryRef.current         = summary;
+      recsRef.current            = recs;
+      areaSummariesRef.current   = areaSummaries;
+      projectedScoresRef.current = projectedScores;
 
-      if (summary      && !cachedSummary      && onSummaryGenerated)      onSummaryGenerated(summary);
-      if (recs         && !cachedRecs         && onRecsGenerated)         onRecsGenerated(recs);
-      if (areaSummaries && !cachedAreaSummaries && onAreaSummariesGenerated) onAreaSummariesGenerated(areaSummaries);
+      if (summary        && !cachedSummary         && onSummaryGenerated)         onSummaryGenerated(summary);
+      if (recs           && !cachedRecs            && onRecsGenerated)            onRecsGenerated(recs);
+      if (areaSummaries  && !cachedAreaSummaries   && onAreaSummariesGenerated)   onAreaSummariesGenerated(areaSummaries);
+      if (projectedScores && !cachedProjectedScores && onProjectedScoresGenerated) onProjectedScoresGenerated(projectedScores);
 
       try {
-        setHtml(buildReportHTML(user, responses, summary, null, areaSummaries));
+        setHtml(buildReportHTML(user, responses, summary, null, areaSummaries, projectedScores));
         setStatus("ready");
       } catch (e) {
         console.error("buildReportHTML (with AI) failed:", e);
@@ -1856,7 +1990,7 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, ca
 
   const handleToggle = (val) => {
     setIncludeRecs(val);
-    if (status === "ready") rebuild(summaryRef.current, null, false, areaSummariesRef.current);
+    if (status === "ready") rebuild(summaryRef.current, null, false, areaSummariesRef.current, projectedScoresRef.current);
   };
 
   // ── Error screen ─────────────────────────────────────────────────────────────
@@ -2466,6 +2600,7 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
   const [reportSummary, setReportSummary] = useState(null);
   const [reportRecs, setReportRecs] = useState(null);
   const [reportAreaSummaries, setReportAreaSummaries] = useState(null);
+  const [reportProjectedScores, setReportProjectedScores] = useState(null);
 
   // Expose a way for Root to clear all AI cache state when scores change
   useEffect(() => {
@@ -2474,15 +2609,17 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
       setReportSummary(null);
       setReportRecs(null);
       setReportAreaSummaries(null);
+      setReportProjectedScores(null);
     });
   }, []);
 
   // Load cached report AI content from storage on mount
   useEffect(() => {
     (async () => {
-      try { const s = await window.storage.get("dmm_report_summary");         if (s?.value) setReportSummary(s.value); } catch (e) {}
-      try { const r = await window.storage.get("dmm_report_recs");            if (r?.value) { const p = JSON.parse(r.value); if (Array.isArray(p)) setReportRecs(p); } } catch (e) {}
-      try { const a = await window.storage.get("dmm_report_area_summaries");  if (a?.value) { const p = JSON.parse(a.value); if (p && typeof p === "object") setReportAreaSummaries(p); } } catch (e) {}
+      try { const s = await window.storage.get("dmm_report_summary");          if (s?.value) setReportSummary(s.value); } catch (e) {}
+      try { const r = await window.storage.get("dmm_report_recs");             if (r?.value) { const p = JSON.parse(r.value); if (Array.isArray(p)) setReportRecs(p); } } catch (e) {}
+      try { const a = await window.storage.get("dmm_report_area_summaries");   if (a?.value) { const p = JSON.parse(a.value); if (p && typeof p === "object") setReportAreaSummaries(p); } } catch (e) {}
+      try { const j = await window.storage.get("dmm_report_projections");      if (j?.value) { const p = JSON.parse(j.value); if (p && typeof p === "object") setReportProjectedScores(p); } } catch (e) {}
     })();
   }, []);
   const stats = getStats(responses);
@@ -2580,6 +2717,7 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
           cachedSummary={reportSummary}
           cachedRecs={reportRecs}
           cachedAreaSummaries={reportAreaSummaries}
+          cachedProjectedScores={reportProjectedScores}
           onSummaryGenerated={s => {
             setReportSummary(s);
             try { window.storage.set("dmm_report_summary", s); } catch (e) {}
@@ -2591,6 +2729,10 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
           onAreaSummariesGenerated={a => {
             setReportAreaSummaries(a);
             try { window.storage.set("dmm_report_area_summaries", JSON.stringify(a)); } catch (e) {}
+          }}
+          onProjectedScoresGenerated={p => {
+            setReportProjectedScores(p);
+            try { window.storage.set("dmm_report_projections", JSON.stringify(p)); } catch (e) {}
           }}
         />
       )}
@@ -2635,6 +2777,7 @@ export default function App() {
     try { await window.storage.delete("dmm_report_summary"); } catch (e) {}
     try { await window.storage.delete("dmm_report_recs"); } catch (e) {}
     try { await window.storage.delete("dmm_report_area_summaries"); } catch (e) {}
+    try { await window.storage.delete("dmm_report_projections"); } catch (e) {}
     // Also clear in-memory recs in MainApp
     if (clearTopicRecsRef.current) clearTopicRecsRef.current();
   };
