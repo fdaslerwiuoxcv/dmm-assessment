@@ -1266,18 +1266,31 @@ function recommendationsSectionHTML(recs) {
   // - Each card is a top-level <div> sibling with only left-border accent, no rounded box
   const cards = recs.map((r, i) => {
     const p = priorityColor(r.effort, r.value);
-    return `<div style="margin:0 28px 12px;padding:14px 16px;background:#fafafa;border:1px solid #e2e8f0;border-left:4px solid ${p.color};">
+    const sourceGoalsHTML = r.source_goals?.length
+      ? `<div style="margin-bottom:7px;display:flex;flex-wrap:wrap;gap:4px;">${r.source_goals.map(g =>
+          `<span style="font-size:9px;color:${p.color};background:${p.bg};border:1px solid ${p.color}30;padding:1px 7px;font-family:'Outfit',sans-serif;font-weight:600;">${g}</span>`
+        ).join("")}</div>`
+      : "";
+    const evidenceHTML = r.evidence
+      ? `<div style="background:${p.bg};border-left:3px solid ${p.color};padding:7px 10px;margin-bottom:8px;">
+          <div style="font-size:9px;font-weight:700;color:${p.color};letter-spacing:1px;margin-bottom:2px;font-family:'Outfit',sans-serif;">ASSESSMENT EVIDENCE</div>
+          <div style="font-size:11px;color:#334155;line-height:1.5;font-style:italic;font-family:'Outfit',sans-serif;">"${r.evidence}"</div>
+        </div>`
+      : "";
+    return `<div style="margin:0 28px 14px;padding:14px 16px;background:#fafafa;border:1px solid #e2e8f0;border-left:4px solid ${p.color};">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:6px;">
         <div style="display:flex;align-items:flex-start;gap:8px;flex:1;">
           <span style="width:22px;height:22px;background:${p.color};color:white;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'Outfit',sans-serif;">${i+1}</span>
           <div>
             <div style="font-size:13px;font-weight:700;color:#0f172a;font-family:'Outfit',sans-serif;margin-bottom:2px;">${r.title}</div>
-            <div style="font-size:10px;color:#94a3b8;font-family:'Outfit',sans-serif;">${r.area}</div>
+            <div style="font-size:10px;color:#94a3b8;font-family:'Outfit',sans-serif;">${r.area}${r.topic ? " &rsaquo; " + r.topic : ""}</div>
           </div>
         </div>
         <span style="background:${p.bg};color:${p.color};padding:2px 9px;font-size:10px;font-weight:700;white-space:nowrap;flex-shrink:0;font-family:'Outfit',sans-serif;">${p.label}</span>
       </div>
+      ${sourceGoalsHTML}
       <p style="margin:0 0 8px;font-size:12px;color:#334155;line-height:1.6;font-family:'Outfit',sans-serif;">${r.description}</p>
+      ${evidenceHTML}
       <div style="background:white;padding:8px 12px;border:1px solid #e2e8f0;margin-bottom:8px;">
         <div style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:1px;margin-bottom:3px;font-family:'Outfit',sans-serif;">BUSINESS VALUE</div>
         <div style="font-size:11px;color:#334155;line-height:1.55;font-family:'Outfit',sans-serif;">${r.business_value}</div>
@@ -1808,40 +1821,78 @@ Write the narrative with these guidelines:
 async function generateRecommendations(user, responses) {
   const stats = getStats(responses);
 
-  const scoreSummary = Object.entries(AREAS).map(([aName, area]) => {
-    const ts = getTopicScores(aName, responses).filter(t => t.score > 0);
-    const avg = ts.length > 0 ? (ts.reduce((a,b) => a + b.score, 0) / ts.length).toFixed(1) : null;
-    const topicLines = ts.map(t => `  - ${t.name}: ${t.score.toFixed(1)}/5`).join("\n");
-    return avg ? `${aName} (avg ${avg}/5):\n${topicLines}` : null;
-  }).filter(Boolean).join("\n\n");
+  // Build a rich evidence dossier — every scored goal with its text, assessor comment, and AI rationale
+  const evidenceDossier = Object.entries(AREAS).map(([aName, area]) => {
+    const topicBlocks = area.topics.map((topic, tIdx) => {
+      const goalLines = topic.goals.map((goalText, gIdx) => {
+        const r = responses[rKey(aName, tIdx, "goal", gIdx)];
+        if (!r?.score) return null;
+        const lines = [`    [G${gIdx + 1}] Score ${r.score}/5 — ${goalText}`];
+        if (r.comment)   lines.push(`      Assessor comment: "${r.comment}"`);
+        if (r.rationale) lines.push(`      AI rationale: ${r.rationale}`);
+        return lines.join("\n");
+      }).filter(Boolean);
+
+      if (goalLines.length === 0) return null;
+      const avgScores = topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean);
+      const topicAvg = avgScores.length > 0 ? (avgScores.reduce((a, b) => a + b, 0) / avgScores.length).toFixed(1) : "—";
+      return `  Topic: ${topic.name} (avg ${topicAvg}/5, ${goalLines.length} goal${goalLines.length > 1 ? "s" : ""} scored)\n${goalLines.join("\n")}`;
+    }).filter(Boolean);
+
+    if (topicBlocks.length === 0) return null;
+    const areaScores = area.topics.flatMap((topic, tIdx) =>
+      topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean)
+    );
+    const areaAvg = areaScores.length > 0 ? (areaScores.reduce((a, b) => a + b, 0) / areaScores.length).toFixed(1) : "—";
+    return `AREA: ${aName} (overall avg ${areaAvg}/5)\n${topicBlocks.join("\n\n")}`;
+  }).filter(Boolean).join("\n\n---\n\n");
 
   const response = await fetch("/api/ai", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "claude-sonnet-4-5",
-      max_tokens: 2000,
+      max_tokens: 4000,
       messages: [{
         role: "user",
-        content: `You are a senior data governance consultant at NTT DATA preparing a prioritized recommendation plan for a client's CMMI DMM assessment report.
+        content: `You are a senior data governance consultant at NTT DATA preparing the Prioritized Action Plan section of a formal CMMI DMM assessment report for a client.
 
 Organization: ${user.org}
 Overall Maturity Score: ${stats.avg ? stats.avg.toFixed(1) : "N/A"}/5.0
 
-AREA AND TOPIC SCORES:
-${scoreSummary}
+Below is the complete assessment evidence — every scored goal, with the assessor's verbatim commentary captured during interview workshops and the AI scoring rationale. This is your ONLY source of truth. Do not invent capabilities, tools, systems, roles, or pain points that are not explicitly named or implied in the evidence.
 
-Generate 6–8 specific, actionable recommendations based on the lowest-scoring areas and most impactful improvement opportunities. Focus on practical steps this organization can actually take.
+ASSESSMENT EVIDENCE:
+${evidenceDossier}
 
-Respond ONLY with a valid JSON array. No preamble, no markdown, no explanation. Each object must have exactly these fields:
-- "title": short recommendation title (max 8 words)
-- "area": the primary CMMI DMM area it addresses
-- "description": 2–3 sentence description of the specific action to take (concrete and realistic)
-- "business_value": 1–2 sentences on the tangible business outcome or risk reduction this delivers
-- "effort": integer 1–5 (1=very low effort, 5=very high effort)
-- "value": integer 1–5 (1=low business value, 5=very high business value)
+YOUR TASK:
+Identify 6–8 high-priority action items grounded entirely in the evidence above. Each action item must:
 
-Calibrate effort and value scores realistically — not everything should be high value. Spread scores across the matrix so the payoff chart is meaningful.`
+1. TARGET a specific, named gap or pain point drawn directly from assessor commentary — use the language participants used (e.g. if the assessor wrote "Collibra covers only 60% of assets", reference Collibra and the coverage gap explicitly — not a generic "metadata repository")
+2. CITE the source goals using the area, topic, and [G#] references
+3. DESCRIBE a concrete action naming the specific systems, processes, roles, or workstreams mentioned in the evidence
+4. JUSTIFY effort and value scores using the evidence (e.g. lower effort if infrastructure partially exists; higher value if commentary references regulatory obligations, executive reporting, or strategic programs)
+5. EXPRESS business value in terms of outcomes the participants named (e.g. BCBS 239 compliance, CDO reporting, audit readiness, cloud migration — whatever was actually said)
+
+EFFORT/VALUE CALIBRATION RULES:
+- Spread scores meaningfully across the 1–5 scale so the payoff matrix is discriminating and useful
+- Do not cluster everything at high value — be realistic and selective
+- If a partial capability already exists per the commentary, effort should reflect that head start
+- Quick Wins must be genuinely achievable within 1–3 months given what exists today
+- Strategic Investments are high-value but require significant build, change management, or cross-team coordination
+
+Use American English spelling throughout.
+
+Respond ONLY with a valid JSON array — no preamble, no markdown fences, no explanation outside the JSON. Each object must have exactly these fields:
+- "title": concise action title using org-specific language from the evidence (max 10 words)
+- "area": the CMMI DMM area this primarily addresses
+- "topic": the specific topic within that area
+- "source_goals": array of strings, e.g. ["Data Governance > Business Glossary > G3", "Data Quality > DQ Assessment > G1"]
+- "description": 2–3 sentences describing the specific action, naming tools, processes, and roles from the evidence
+- "evidence": 1 sentence quoting or closely paraphrasing the specific assessor comment or finding that motivates this action
+- "business_value": 1–2 sentences on the tangible outcome, using terminology from the evidence
+- "effort": integer 1–5 (1=very low, 5=very high)
+- "value": integer 1–5 (1=low, 5=very high)`
       }]
     })
   });
@@ -1900,23 +1951,36 @@ function printRecsOnly(recs, user) {
 
   const cards = recs.map((r, i) => {
     const p = priorityColor(r.effort, r.value);
-    return `<div style="margin:0 0 10px;padding:14px 16px;border-left:4px solid ${p.color};border-top:1px solid #e2e8f0;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;background:#fafafa;">
+    const sourceGoalsHTML = r.source_goals?.length
+      ? `<div style="margin-bottom:8px;display:flex;flex-wrap:wrap;gap:4px;">${r.source_goals.map(g =>
+          `<span style="font-size:9px;color:${p.color};background:${p.bg};border:1px solid ${p.color}30;padding:1px 7px;font-family:'Outfit',sans-serif;font-weight:600;">${g}</span>`
+        ).join("")}</div>`
+      : "";
+    const evidenceHTML = r.evidence
+      ? `<div style="background:${p.bg};border-left:3px solid ${p.color};padding:7px 10px;margin-bottom:8px;">
+          <div style="font-size:9px;font-weight:700;color:${p.color};letter-spacing:1px;margin-bottom:2px;font-family:'Outfit',sans-serif;">ASSESSMENT EVIDENCE</div>
+          <div style="font-size:11px;color:#334155;line-height:1.5;font-style:italic;font-family:'Outfit',sans-serif;">"${r.evidence}"</div>
+        </div>`
+      : "";
+    return `<div style="margin:0 0 12px;padding:14px 16px;border-left:4px solid ${p.color};border-top:1px solid #e2e8f0;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;background:#fafafa;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
         <div style="display:flex;gap:8px;align-items:flex-start;flex:1;">
           <span style="background:${p.color};color:white;font-size:10px;font-weight:700;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'Outfit',sans-serif;">${i+1}</span>
           <div>
             <div style="font-size:13px;font-weight:700;color:#0f172a;font-family:'Outfit',sans-serif;">${r.title}</div>
-            <div style="font-size:10px;color:#94a3b8;font-family:'Outfit',sans-serif;">${r.area}</div>
+            <div style="font-size:10px;color:#94a3b8;font-family:'Outfit',sans-serif;">${r.area}${r.topic ? " &rsaquo; " + r.topic : ""}</div>
           </div>
         </div>
         <span style="background:${p.bg};color:${p.color};font-size:10px;font-weight:700;padding:2px 8px;white-space:nowrap;font-family:'Outfit',sans-serif;">${p.label}</span>
       </div>
+      ${sourceGoalsHTML}
       <p style="margin:0 0 8px;font-size:11.5px;color:#334155;line-height:1.6;font-family:'Outfit',sans-serif;">${r.description}</p>
-      <div style="background:white;padding:7px 10px;border:1px solid #e2e8f0;margin-bottom:6px;">
+      ${evidenceHTML}
+      <div style="background:white;padding:7px 10px;border:1px solid #e2e8f0;margin-bottom:8px;">
         <div style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:1px;margin-bottom:2px;font-family:'Outfit',sans-serif;">BUSINESS VALUE</div>
         <div style="font-size:11px;color:#334155;line-height:1.5;font-family:'Outfit',sans-serif;">${r.business_value}</div>
       </div>
-      <div style="font-size:10px;color:#64748b;font-family:'Outfit',sans-serif;">Effort: <strong>${effortLabel(r.effort)}</strong> &nbsp; Value: <strong>${valueLabel(r.value)}</strong></div>
+      <div style="font-size:10px;color:#64748b;font-family:'Outfit',sans-serif;">Effort: <strong>${effortLabel(r.effort)}</strong> &nbsp;&nbsp; Value: <strong>${valueLabel(r.value)}</strong></div>
     </div>`;
   }).join("");
 
