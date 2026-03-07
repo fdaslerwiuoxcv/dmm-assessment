@@ -1143,7 +1143,7 @@ function recommendationsSectionHTML(recs) {
   // - Each card is a top-level <div> sibling with only left-border accent, no rounded box
   const cards = recs.map((r, i) => {
     const p = priorityColor(r.effort, r.value);
-    return `<div style="margin:0 52px 12px;padding:14px 16px;background:#fafafa;border:1px solid #e2e8f0;border-left:4px solid ${p.color};">
+    return `<div style="margin:0 28px 12px;padding:14px 16px;background:#fafafa;border:1px solid #e2e8f0;border-left:4px solid ${p.color};">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:6px;">
         <div style="display:flex;align-items:flex-start;gap:8px;flex:1;">
           <span style="width:22px;height:22px;background:${p.color};color:white;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'Outfit',sans-serif;">${i+1}</span>
@@ -1167,7 +1167,7 @@ function recommendationsSectionHTML(recs) {
   }).join("\n");
 
   return `
-    <div style="page-break-before:always;padding:44px 52px 24px;">
+    <div style="page-break-before:always;padding:44px 28px 24px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;padding-bottom:20px;border-bottom:1.5px solid #f1f5f9;">
         ${nttLogoBlackHTML(24)}
         <span style="font-size:10px;font-weight:700;color:#cbd5e1;letter-spacing:2px;font-family:'Outfit',sans-serif;">CMMI DMM ASSESSMENT REPORT</span>
@@ -1237,7 +1237,7 @@ function buildAreaPages(responses, areaSummaries, C, badge, bar, stats) {
       </div>`;
     }).join("");
 
-    return `<div style="padding:44px 52px;page-break-before:always;overflow:visible;">
+    return `<div style="padding:44px 28px;page-break-before:always;overflow:visible;">
 
       <!-- Page header -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:1.5px solid #f1f5f9;">
@@ -1377,7 +1377,7 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
     </div>
 
     <!-- EXECUTIVE SUMMARY -->
-    <div style="padding:44px 52px;">
+    <div style="padding:44px 28px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;padding-bottom:20px;border-bottom:1.5px solid #f1f5f9;">
         ${nttLogoBlackHTML(24)}
         <span style="font-size:10px;font-weight:700;color:#cbd5e1;letter-spacing:2px;font-family:'Outfit',sans-serif;">CMMI DMM ASSESSMENT REPORT</span>
