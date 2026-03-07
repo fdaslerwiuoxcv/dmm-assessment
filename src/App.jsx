@@ -1041,14 +1041,85 @@ function masterRadarSVG(responses, size = 300) {
   return radarSVG({ spokes, size, fillColor: "#0072BC", bgDark: true, labelColor: "rgba(255,255,255,0.8)" });
 }
 
-function areaRadarSVG(aName, responses, size = 260) {
+function areaRadarSVG(aName, responses, size = 300) {
   const area = AREAS[aName];
   const spokes = area.topics.map((topic, tIdx) => {
     const scored = topic.goals.map((_,gIdx) => responses[rKey(aName,tIdx,"goal",gIdx)]?.score).filter(Boolean);
     const avg = scored.length > 0 ? scored.reduce((a,b) => a+b,0) / scored.length : 0;
-    return { label: topic.name, score: avg || null, color: area.color };
+    return { label: String(tIdx + 1), fullLabel: topic.name, score: avg || null, color: area.color };
   });
-  return radarSVG({ spokes, size, fillColor: area.color, bgDark: false, labelColor: "#334155" });
+
+  // Build radar SVG with numbered labels
+  const cx = size / 2, cy = size / 2;
+  const maxR = size * 0.36;
+  const n = spokes.length;
+  const angleStep = 360 / n;
+  const gridColor = "#e2e8f0";
+  const gridLabelColor = "#94a3b8";
+
+  const ringsSVG = [1,2,3,4,5].map(i => {
+    const r = (i / 5) * maxR;
+    const pts = Array.from({length:n}, (_,k) => {
+      const p = polarToXY(k * angleStep, r, cx, cy);
+      return `${p.x},${p.y}`;
+    }).join(" ");
+    return `<polygon points="${pts}" fill="none" stroke="${gridColor}" stroke-width="${i === 5 ? 1.5 : 0.8}" />`;
+  }).join("\n");
+
+  const ringLabels = [1,2,3,4,5].map(i => {
+    const r = (i / 5) * maxR;
+    const p = polarToXY(0, r, cx, cy);
+    return `<text x="${p.x + 3}" y="${p.y - 2}" font-size="8" fill="${gridLabelColor}" font-family="Outfit,sans-serif">${i}</text>`;
+  }).join("\n");
+
+  const spokeLines = Array.from({length:n}, (_,i) => {
+    const p = polarToXY(i * angleStep, maxR, cx, cy);
+    return `<line x1="${cx}" y1="${cy}" x2="${p.x}" y2="${p.y}" stroke="#f1f5f9" stroke-width="1" />`;
+  }).join("\n");
+
+  const dataPoints = spokes.map((s, i) => {
+    const score = Math.min(5, Math.max(0, s.score || 0));
+    return polarToXY(i * angleStep, (score / 5) * maxR, cx, cy);
+  });
+  const polyPts = dataPoints.map(p => `${p.x},${p.y}`).join(" ");
+
+  const dots = dataPoints.map((p, i) =>
+    spokes[i].score ? `<circle cx="${p.x}" cy="${p.y}" r="4" fill="${area.color}" stroke="white" stroke-width="1.5" />` : ""
+  ).join("\n");
+
+  // Numbered spoke labels — compact, never clip
+  const labelPad = 18;
+  const labels = spokes.map((s, i) => {
+    const p = polarToXY(i * angleStep, maxR + labelPad, cx, cy);
+    const anchor = p.x < cx - 4 ? "end" : p.x > cx + 4 ? "start" : "middle";
+    return `<text x="${p.x}" y="${p.y + 4}" text-anchor="${anchor}" font-size="11" font-weight="700" fill="${area.color}" font-family="Outfit,sans-serif">${s.label}</text>`;
+  }).join("\n");
+
+  const chartSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    ${ringsSVG}
+    ${ringLabels}
+    ${spokeLines}
+    <polygon points="${polyPts}" fill="${area.color}22" stroke="${area.color}" stroke-width="2" stroke-linejoin="round" />
+    ${dots}
+    ${labels}
+  </svg>`;
+
+  // Legend rows: number + full topic name + score
+  const legendRows = spokes.map(s => {
+    const scoreText = s.score ? s.score.toFixed(1) : "—";
+    return `<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px;">
+      <span style="width:16px;height:16px;border-radius:3px;background:${area.color};color:white;font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'Outfit',sans-serif;">${s.label}</span>
+      <span style="font-size:11px;color:#334155;font-family:'Outfit',sans-serif;flex:1;">${s.fullLabel}</span>
+      <span style="font-size:11px;font-weight:700;color:${area.color};font-family:'Outfit',sans-serif;">${scoreText}</span>
+    </div>`;
+  }).join("");
+
+  return `<div style="display:flex;flex-direction:column;align-items:center;">
+    ${chartSVG}
+    <div style="width:${size}px;margin-top:6px;padding:8px 10px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+      ${legendRows}
+    </div>
+  </div>`;
 }
 
 // ─── Payoff Matrix SVG ────────────────────────────────────────────────────────
