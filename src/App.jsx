@@ -1829,8 +1829,14 @@ function Dashboard({ responses, onNavigate, user, onExport }) {
     (async () => {
       try {
         const cached = await window.storage.get("dmm_topic_recs");
-        if (cached) setTopicRecs(JSON.parse(cached.value));
-      } catch (e) {}
+        // storage.get throws if key doesn't exist; if we get here, key exists
+        if (cached?.value) {
+          const parsed = JSON.parse(cached.value);
+          if (parsed && typeof parsed === "object") setTopicRecs(parsed);
+        }
+      } catch (e) {
+        // Key not found or parse error — stay in "not generated" state
+      }
     })();
   }, []);
 
@@ -1840,7 +1846,9 @@ function Dashboard({ responses, onNavigate, user, onExport }) {
     try {
       const recs = await generateTopicRecs(responses);
       setTopicRecs(recs);
-      await window.storage.set("dmm_topic_recs", JSON.stringify(recs));
+      // Confirm write succeeded before treating as cached
+      const result = await window.storage.set("dmm_topic_recs", JSON.stringify(recs));
+      if (!result) console.warn("dmm_topic_recs storage write returned null — cache may not persist");
     } catch (e) {
       console.error("Topic recs error:", e);
       setRecsError("Failed to generate recommendations. Please try again.");
