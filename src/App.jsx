@@ -1681,7 +1681,8 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSumm
   const [aiError, setAiError] = useState("");
   const [html, setHtml] = useState("");
   const summaryRef         = useRef(null);
-  const areaSummariesRef   = useRef(null);
+  const areaSummariesRef          = useRef(null);
+  const areaRecsAndProjectionsRef  = useRef(null);
 
   const rebuild = (summary, areaSummaries, areaRecsAndProjections) => {
     try {
