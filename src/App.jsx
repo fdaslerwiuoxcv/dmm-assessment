@@ -1200,19 +1200,14 @@ function buildAreaPages(responses, areaSummaries, C, badge, bar, stats) {
     // ── Topic score table ──────────────────────────────────────────────────────
     const topicRows = topicScores.map(t => {
       const scored = t.score > 0;
-      const lvl = scored ? Math.min(5, Math.max(1, Math.round(t.score))) : null;
-      const c = lvl ? C[lvl] : null;
       return `<tr style="border-bottom:1px solid #f1f5f9;">
         <td style="padding:9px 14px;font-size:13px;font-weight:500;color:#334155;font-family:'Outfit',sans-serif;">${t.topic}</td>
         <td style="padding:9px 14px;text-align:right;">${scored ? badge(t.score) : '<span style="color:#cbd5e1;font-size:12px;font-family:Outfit,sans-serif;">Not scored</span>'}</td>
-        <td style="padding:9px 14px;width:110px;">
-          ${scored ? `<div style="background:#f1f5f9;border-radius:3px;height:6px;"><div style="width:${(t.score/5)*100}%;background:${c.color};height:6px;border-radius:3px;"></div></div>` : ""}
-        </td>
       </tr>`;
     }).join("");
 
     // ── Area radar SVG ────────────────────────────────────────────────────────
-    const radarSvg = areaRadarSVG(aName, responses, 270);
+    const radarSvg = areaRadarSVG(aName, responses, 320);
 
     // ── AI topic narratives ───────────────────────────────────────────────────
     const areaNarratives = areaSummaries ? (areaSummaries[aName] || areaSummaries[Object.keys(areaSummaries).find(k => k.toLowerCase().includes(aName.toLowerCase().slice(0,6))) || ""] || null) : null;
@@ -1269,7 +1264,6 @@ function buildAreaPages(responses, areaSummaries, C, badge, bar, stats) {
             <thead><tr style="background:#f8fafc;">
               <th style="padding:8px 14px;text-align:left;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1px;font-family:'Outfit',sans-serif;">TOPIC</th>
               <th style="padding:8px 14px;text-align:right;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1px;font-family:'Outfit',sans-serif;">SCORE</th>
-              <th style="padding:8px 14px;width:110px;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1px;font-family:'Outfit',sans-serif;"></th>
             </tr></thead>
             <tbody>${topicRows}</tbody>
           </table>
