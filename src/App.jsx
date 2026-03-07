@@ -1181,12 +1181,17 @@ function payoffMatrixSVG(recs, size = 480) {
   const plotW = w - pad.left - pad.right;
   const plotH = h - pad.top - pad.bottom;
 
-  // Quadrant fills
+  // Quadrant fills — x-axis: Low effort (left) → High effort (right)
+  //                          y-axis: Low value (bottom) → High value (top, inverted in SVG)
+  // Top-left:     low effort  + high value = QUICK WINS          (green)
+  // Top-right:    high effort + high value = STRATEGIC INVESTMENTS (blue)
+  // Bottom-left:  low effort  + low value  = FILL-INS             (amber)
+  // Bottom-right: high effort + low value  = DEPRIORITIZE         (grey)
   const quads = [
-    { x: pad.left,              y: pad.top,              w: plotW/2, h: plotH/2, fill: "#DAEEF9", label: "STRATEGIC\nINVESTMENTS", lx: pad.left + plotW*0.25,        ly: pad.top + 14 },
-    { x: pad.left + plotW/2,    y: pad.top,              w: plotW/2, h: plotH/2, fill: "#E0F5EC", label: "QUICK\nWINS",            lx: pad.left + plotW*0.75,        ly: pad.top + 14 },
-    { x: pad.left,              y: pad.top + plotH/2,    w: plotW/2, h: plotH/2, fill: "#f8fafc", label: "DEPRIORITIZE",           lx: pad.left + plotW*0.25,        ly: pad.top + plotH/2 + 14 },
-    { x: pad.left + plotW/2,    y: pad.top + plotH/2,    w: plotW/2, h: plotH/2, fill: "#FFF5CC", label: "FILL-INS",               lx: pad.left + plotW*0.75,        ly: pad.top + plotH/2 + 14 },
+    { x: pad.left,           y: pad.top,           w: plotW/2, h: plotH/2, fill: "#E0F5EC", label: "QUICK\nWINS",             lx: pad.left + plotW*0.25, ly: pad.top + 14 },
+    { x: pad.left + plotW/2, y: pad.top,           w: plotW/2, h: plotH/2, fill: "#DAEEF9", label: "STRATEGIC\nINVESTMENTS",  lx: pad.left + plotW*0.75, ly: pad.top + 14 },
+    { x: pad.left,           y: pad.top + plotH/2, w: plotW/2, h: plotH/2, fill: "#FFF5CC", label: "FILL-INS",                lx: pad.left + plotW*0.25, ly: pad.top + plotH/2 + 14 },
+    { x: pad.left + plotW/2, y: pad.top + plotH/2, w: plotW/2, h: plotH/2, fill: "#f8fafc", label: "DEPRIORITIZE",            lx: pad.left + plotW*0.75, ly: pad.top + plotH/2 + 14 },
   ];
 
   const quadRects = quads.map(q =>
@@ -1209,36 +1214,73 @@ function payoffMatrixSVG(recs, size = 480) {
     <text x="${pad.left}" y="${pad.top - 6}" font-size="9" fill="#94a3b8" font-family="Outfit,sans-serif">High</text>
     <text x="${pad.left + plotW/2}" y="${h - 8}" text-anchor="middle" font-size="9" font-weight="600" fill="#64748b" font-family="Outfit,sans-serif">IMPLEMENTATION EFFORT →</text>`;
 
-  // Dot colors by quadrant
+  // Dot color matches quadrant
   const dotColor = (effort, value) => {
     const highVal = value >= 3;
     const lowEff = effort <= 3;
     if (highVal && lowEff)  return "#068941";  // Quick Win — green
-    if (highVal && !lowEff) return "#0072BC";  // Strategic — blue
+    if (highVal && !lowEff) return "#0072BC";  // Strategic Investment — blue
     if (!highVal && lowEff) return "#CC7700";  // Fill-in — amber
     return "#94a3b8";                           // Deprioritize — grey
   };
 
-  // Jitter overlapping dots slightly
-  const placed = [];
+  // Place dots with quadrant-aware spreading.
+  // Each dot stays within its correct quadrant; ties are spread using a
+  // deterministic offset grid so the chart is stable across renders.
+  const midX = pad.left + plotW / 2;
+  const midY = pad.top  + plotH / 2;
+
+  // Group items by quadrant so we can spread within each zone
+  const byQuad = { TL: [], TR: [], BL: [], BR: [] };
+  recs.forEach((r, i) => {
+    const q = (r.value >= 3 ? "T" : "B") + (r.effort <= 3 ? "L" : "R");
+    byQuad[q].push({ r, i });
+  });
+
+  // For each quadrant, compute the usable rect and lay dots out in a grid
+  const quadBounds = {
+    TL: { x1: pad.left + 14, x2: midX - 14, y1: pad.top + 14,  y2: midY - 14 },
+    TR: { x1: midX + 14,     x2: pad.left + plotW - 14, y1: pad.top + 14, y2: midY - 14 },
+    BL: { x1: pad.left + 14, x2: midX - 14, y1: midY + 14, y2: pad.top + plotH - 14 },
+    BR: { x1: midX + 14,     x2: pad.left + plotW - 14, y1: midY + 14, y2: pad.top + plotH - 14 },
+  };
+
+  const dotPositions = {};
+  ["TL","TR","BL","BR"].forEach(qk => {
+    const items = byQuad[qk];
+    const b = quadBounds[qk];
+    const bw = b.x2 - b.x1;
+    const bh = b.y2 - b.y1;
+    items.forEach((item, slot) => {
+      const { r, i } = item;
+      // Base position from scores, mapped into the quadrant's half
+      // effort: TL/BL → 1-3, TR/BR → 4-5
+      const effortRange = qk[1] === "L" ? [1, 3] : [4, 5];
+      const valueRange  = qk[0] === "T" ? [3, 5] : [1, 2];
+      const effortClamped = Math.max(effortRange[0], Math.min(effortRange[1], r.effort));
+      const valueClamped  = Math.max(valueRange[0],  Math.min(valueRange[1],  r.value));
+      const rawX = b.x1 + ((effortClamped - effortRange[0]) / Math.max(1, effortRange[1] - effortRange[0])) * bw;
+      const rawY = b.y1 + ((valueRange[1]  - valueClamped)  / Math.max(1, valueRange[1] - valueRange[0]))  * bh;
+      // Deterministic spread offset for ties: arrange in a small grid
+      const cols = Math.ceil(Math.sqrt(items.length));
+      const row  = Math.floor(slot / cols);
+      const col  = slot % cols;
+      const spreadX = items.length > 1 ? (col - (cols - 1) / 2) * 22 : 0;
+      const spreadY = items.length > 1 ? (row - (Math.ceil(items.length / cols) - 1) / 2) * 22 : 0;
+      let fx = rawX + spreadX;
+      let fy = rawY + spreadY;
+      // Hard clamp within quadrant
+      fx = Math.max(b.x1, Math.min(b.x2, fx));
+      fy = Math.max(b.y1, Math.min(b.y2, fy));
+      dotPositions[i] = { x: fx, y: fy };
+    });
+  });
+
   const dots = recs.map((r, i) => {
-    // effort 1-5 → x, value 1-5 → y (inverted: high value = top)
-    let bx = pad.left + ((r.effort - 1) / 4) * plotW;
-    let by = pad.top + ((5 - r.value) / 4) * plotH;
-    // nudge if overlapping
-    let attempts = 0;
-    while (placed.some(p => Math.abs(p.x - bx) < 18 && Math.abs(p.y - by) < 18) && attempts < 12) {
-      bx += (Math.random() - 0.5) * 20;
-      by += (Math.random() - 0.5) * 20;
-      attempts++;
-    }
-    // clamp within plot
-    bx = Math.max(pad.left + 12, Math.min(pad.left + plotW - 12, bx));
-    by = Math.max(pad.top + 12, Math.min(pad.top + plotH - 12, by));
-    placed.push({ x: bx, y: by });
+    const { x, y } = dotPositions[i];
     const dc = dotColor(r.effort, r.value);
-    return `<circle cx="${bx}" cy="${by}" r="12" fill="${dc}" opacity="0.9"/>
-            <text x="${bx}" y="${by + 4}" text-anchor="middle" font-size="10" font-weight="700" fill="white" font-family="Outfit,sans-serif">${i+1}</text>`;
+    return `<circle cx="${x}" cy="${y}" r="12" fill="${dc}" opacity="0.9"/>
+            <text x="${x}" y="${y + 4}" text-anchor="middle" font-size="10" font-weight="700" fill="white" font-family="Outfit,sans-serif">${i+1}</text>`;
   }).join("\n");
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
