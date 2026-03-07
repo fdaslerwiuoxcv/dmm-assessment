@@ -1191,7 +1191,109 @@ function recommendationsSectionHTML(recs) {
 }
 
 // ─── PDF Report Builder ───────────────────────────────────────────────────────
-function buildReportHTML(user, responses, aiSummary = null, recommendations = null) {
+function buildAreaPages(responses, areaSummaries, C, badge, bar, stats) {
+  return Object.entries(AREAS).map(([aName, area]) => {
+    const as_ = stats.areaStats[aName];
+    const areaAvg = as_.avg;
+    const topicScores = getTopicScores(aName, responses);
+
+    // ── Topic score table ──────────────────────────────────────────────────────
+    const topicRows = topicScores.map(t => {
+      const scored = t.score > 0;
+      const lvl = scored ? Math.min(5, Math.max(1, Math.round(t.score))) : null;
+      const c = lvl ? C[lvl] : null;
+      return `<tr style="border-bottom:1px solid #f1f5f9;">
+        <td style="padding:9px 14px;font-size:13px;font-weight:500;color:#334155;font-family:'Outfit',sans-serif;">${t.topic}</td>
+        <td style="padding:9px 14px;text-align:right;">${scored ? badge(t.score) : '<span style="color:#cbd5e1;font-size:12px;font-family:Outfit,sans-serif;">Not scored</span>'}</td>
+        <td style="padding:9px 14px;width:110px;">
+          ${scored ? `<div style="background:#f1f5f9;border-radius:3px;height:6px;"><div style="width:${(t.score/5)*100}%;background:${c.color};height:6px;border-radius:3px;"></div></div>` : ""}
+        </td>
+      </tr>`;
+    }).join("");
+
+    // ── Area radar SVG ────────────────────────────────────────────────────────
+    const radarSvg = areaRadarSVG(aName, responses, 270);
+
+    // ── AI topic narratives ───────────────────────────────────────────────────
+    const areaNarratives = areaSummaries ? (areaSummaries[aName] || areaSummaries[Object.keys(areaSummaries).find(k => k.toLowerCase().includes(aName.toLowerCase().slice(0,6))) || ""] || null) : null;
+
+    const narrativeSection = area.topics.map((topic, tIdx) => {
+      const scored = topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean);
+      if (scored.length === 0) return "";
+      const topicAvg = scored.reduce((a, b) => a + b, 0) / scored.length;
+      const narrative = areaNarratives
+        ? (areaNarratives[topic.name] || areaNarratives[Object.keys(areaNarratives).find(k => k.toLowerCase().includes(topic.name.toLowerCase().slice(0,6))) || ""] || null)
+        : null;
+
+      return `<div style="margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding-bottom:6px;border-bottom:1.5px solid ${area.color}20;">
+          <span style="font-size:13px;font-weight:700;color:#0f172a;font-family:'Outfit',sans-serif;">${topic.name}</span>
+          ${badge(topicAvg)}
+        </div>
+        ${narrative
+          ? `<p style="margin:0;font-size:13px;color:#334155;line-height:1.75;font-family:'Outfit',sans-serif;">${narrative}</p>`
+          : `<p style="margin:0;font-size:12px;color:#94a3b8;font-style:italic;font-family:'Outfit',sans-serif;">AI narrative pending — click Generate in the report overlay to populate.</p>`
+        }
+      </div>`;
+    }).join("");
+
+    return `<div style="padding:44px 52px;page-break-before:always;overflow:visible;">
+
+      <!-- Page header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:1.5px solid #f1f5f9;">
+        ${nttLogoBlackHTML(20)}
+        <span style="font-size:10px;font-weight:700;color:#cbd5e1;letter-spacing:2px;font-family:'Outfit',sans-serif;">CMMI DMM ASSESSMENT REPORT</span>
+      </div>
+
+      <!-- Area title -->
+      <div style="background:linear-gradient(135deg,${area.color}12,${area.color}04);border-radius:12px;padding:20px 26px;margin-bottom:24px;border:1.5px solid ${area.color}1a;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div style="display:flex;align-items:center;gap:14px;">
+            <span style="font-size:28px;">${area.icon}</span>
+            <div>
+              <h2 style="margin:0;font-size:22px;font-weight:700;color:#0f172a;font-family:'Fraunces',serif;">${aName}</h2>
+              <p style="margin:4px 0 0;font-size:12px;color:#64748b;font-family:'Outfit',sans-serif;">${area.topics.length} topics · ${as_.total} goals · ${as_.scored} scored</p>
+            </div>
+          </div>
+          ${areaAvg ? `<div style="text-align:right;">${badge(areaAvg)}<div style="font-size:10px;color:#94a3b8;margin-top:5px;font-family:'Outfit',sans-serif;">Area average</div></div>` : ""}
+        </div>
+      </div>
+
+      <!-- Two-column layout: topic scores left, radar right -->
+      <div style="display:flex;gap:24px;margin-bottom:28px;align-items:flex-start;">
+
+        <!-- Topic scores -->
+        <div style="flex:1;min-width:0;">
+          <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin:0 0 10px;font-family:'Outfit',sans-serif;">TOPIC SCORES</p>
+          <table style="width:100%;border-collapse:collapse;border:1.5px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+            <thead><tr style="background:#f8fafc;">
+              <th style="padding:8px 14px;text-align:left;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1px;font-family:'Outfit',sans-serif;">TOPIC</th>
+              <th style="padding:8px 14px;text-align:right;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1px;font-family:'Outfit',sans-serif;">SCORE</th>
+              <th style="padding:8px 14px;width:110px;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1px;font-family:'Outfit',sans-serif;"></th>
+            </tr></thead>
+            <tbody>${topicRows}</tbody>
+          </table>
+        </div>
+
+        <!-- Radar chart -->
+        <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:8px;">
+          <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin:0;font-family:'Outfit',sans-serif;">MATURITY PROFILE</p>
+          ${radarSvg}
+        </div>
+
+      </div>
+
+      <!-- AI Assessment section -->
+      <div style="border-top:1.5px solid #f1f5f9;padding-top:22px;">
+        <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin:0 0 18px;font-family:'Outfit',sans-serif;">AI ASSESSMENT — BY TOPIC</p>
+        ${narrativeSection || '<p style="color:#94a3b8;font-size:12px;font-family:Outfit,sans-serif;">No goals have been scored for this area yet.</p>'}
+      </div>
+
+    </div>`;
+  }).join("");
+}
+
+function buildReportHTML(user, responses, aiSummary = null, recommendations = null, areaSummaries = null) {
   const stats = getStats(responses);
   const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   const overallLevel = stats.avg ? Math.min(5, Math.max(1, Math.round(stats.avg))) : null;
@@ -1231,65 +1333,7 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
     </tr>`;
   }).join("");
 
-  const areaDetailSections = Object.entries(AREAS).map(([aName, area]) => {
-    const as_ = stats.areaStats[aName];
-    const areaAvg = as_.avg;
-
-    const topicSections = area.topics.map((topic, tIdx) => {
-      const scored = topic.goals.map((_,gIdx) => responses[rKey(aName,tIdx,"goal",gIdx)]?.score).filter(Boolean);
-      const topicAvg = scored.length > 0 ? scored.reduce((a,b) => a+b,0) / scored.length : null;
-
-      const goalCardsArr = topic.goals.map((goal, gIdx) => {
-        const r = responses[rKey(aName,tIdx,"goal",gIdx)] || {};
-        const lvl = r.score ? Math.min(5,Math.max(1,Math.round(r.score))) : null;
-        return `<div style="margin-bottom:12px;padding:13px 15px;background:${r.score?"#fafafa":"#fff"};border:1.5px solid ${r.score ? area.color+"22" : "#e2e8f0"};border-radius:10px;page-break-inside:avoid;">
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
-            <div style="display:flex;gap:9px;align-items:flex-start;flex:1;">
-              <span style="background:${area.color}18;color:${area.color};font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;white-space:nowrap;flex-shrink:0;font-family:'Outfit',sans-serif;">G${gIdx+1}</span>
-              <p style="margin:0;font-size:12.5px;color:#334155;line-height:1.65;font-family:'Outfit',sans-serif;">${goal}</p>
-            </div>
-            <div style="flex-shrink:0;padding-top:1px;">${badge(r.score)}</div>
-          </div>
-          ${r.comment ? `<div style="margin-top:9px;padding:8px 11px;background:#f8fafc;border-left:2.5px solid #e2e8f0;border-radius:0 6px 6px 0;font-size:12px;color:#475569;line-height:1.6;font-family:'Outfit',sans-serif;"><span style="display:block;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1px;margin-bottom:4px;">COMMENT</span>${r.comment}</div>` : ""}
-          ${r.rationale ? `<div style="margin-top:8px;padding:8px 11px;background:${C[lvl]?.bg};border-left:3px solid ${C[lvl]?.color};border-radius:0 6px 6px 0;font-size:12px;color:#334155;line-height:1.6;font-family:'Outfit',sans-serif;"><span style="display:block;font-size:10px;font-weight:700;color:${C[lvl]?.color};letter-spacing:1px;margin-bottom:4px;">RATIONALE</span>${r.rationale}</div>` : ""}
-        </div>`;
-      });
-
-      const topicHeader = `<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 13px;background:${area.color}0a;border-radius:8px;border-left:3px solid ${area.color};margin-bottom:11px;">
-          <span style="font-size:13.5px;font-weight:700;color:#0f172a;font-family:'Outfit',sans-serif;">${topic.name}</span>
-          <div style="display:flex;align-items:center;">${topicAvg ? badge(topicAvg) : '<span style="font-size:11px;color:#cbd5e1;font-family:Outfit,sans-serif;">No scores yet</span>'}${topicAvg ? bar(topicAvg, 90) : ""}</div>
-        </div>`;
-
-      // Wrap header + first goal together so the header never orphans on its own page
-      const firstGoal = goalCardsArr[0] || "";
-      const restGoals = goalCardsArr.slice(1).join("");
-
-      return `<div style="margin-bottom:22px;">
-        <div style="page-break-inside:avoid;">${topicHeader}${firstGoal}</div>
-        ${restGoals}
-      </div>`;
-    }).join("");
-
-    return `<div style="padding:44px 52px;page-break-before:always;overflow:visible;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:1.5px solid #f1f5f9;">
-        ${nttLogoBlackHTML(20)}
-        <span style="font-size:10px;font-weight:700;color:#cbd5e1;letter-spacing:2px;font-family:'Outfit',sans-serif;">CMMI DMM ASSESSMENT REPORT</span>
-      </div>
-      <div style="background:linear-gradient(135deg,${area.color}12,${area.color}04);border-radius:12px;padding:22px 26px;margin-bottom:26px;border:1.5px solid ${area.color}1a;">
-        <div style="display:flex;align-items:center;justify-content:space-between;">
-          <div style="display:flex;align-items:center;gap:14px;">
-            <span style="font-size:26px;">${area.icon}</span>
-            <div>
-              <h2 style="margin:0;font-size:20px;font-weight:700;color:#0f172a;font-family:'Fraunces',serif;">${aName}</h2>
-              <p style="margin:4px 0 0;font-size:12px;color:#64748b;font-family:'Outfit',sans-serif;">${area.topics.length} topics · ${as_.total} goals · ${as_.scored} scored</p>
-            </div>
-          </div>
-          ${areaAvg ? `<div style="text-align:right;">${badge(areaAvg)}<div style="font-size:10px;color:#94a3b8;margin-top:5px;font-family:'Outfit',sans-serif;">Area average</div></div>` : ""}
-        </div>
-      </div>
-      ${topicSections}
-    </div>`;
-  }).join("");
+  const areaDetailPages = buildAreaPages(responses, areaSummaries, C, badge, bar, stats);
 
   return `
     <style>
@@ -1397,12 +1441,70 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
         </div>
       </div>
 
-    <!-- DETAILED SECTIONS -->
-    ${areaDetailSections}
+    <!-- AREA PAGES -->
+    ${areaDetailPages}
 
     <!-- RECOMMENDATIONS (optional) -->
     ${recommendations && recommendations.length > 0 ? recommendationsSectionHTML(recommendations) : ""}
   `;
+}
+
+// ─── Area Summaries Generator ─────────────────────────────────────────────────
+async function generateAreaSummaries(responses) {
+  const areaSections = Object.entries(AREAS).map(([aName, area]) => {
+    const topicBlocks = area.topics.map((topic, tIdx) => {
+      const goalLines = topic.goals.map((goalText, gIdx) => {
+        const r = responses[rKey(aName, tIdx, "goal", gIdx)];
+        if (!r?.score) return null;
+        const lines = [`    Goal ${gIdx + 1} (${r.score}/5): ${goalText}`];
+        if (r.comment)   lines.push(`      Current state: ${r.comment}`);
+        if (r.rationale) lines.push(`      Rationale: ${r.rationale}`);
+        return lines.join("\n");
+      }).filter(Boolean);
+      if (goalLines.length === 0) return null;
+      const scored = topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean);
+      const avg = (scored.reduce((a, b) => a + b, 0) / scored.length).toFixed(1);
+      return `  Topic: ${topic.name} (avg ${avg}/5)\n${goalLines.join("\n")}`;
+    }).filter(Boolean);
+    if (topicBlocks.length === 0) return null;
+    return `${aName}:\n${topicBlocks.join("\n\n")}`;
+  }).filter(Boolean).join("\n\n===\n\n");
+
+  const res = await fetch("/api/ai", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 4000,
+      messages: [{
+        role: "user",
+        content: `You are a senior CMMI DMM data governance consultant authoring a formal assessment report for a client.
+
+For each area and topic below, write a concise narrative paragraph (3–5 sentences) that:
+- Characterizes the organization's current maturity based on the goal scores and evidence
+- References specific observations from the assessor comments and AI rationales
+- Identifies the key gap or risk for that topic
+- Uses professional, authoritative language appropriate for an executive audience
+- Does NOT use bullet points, headers, or markdown — flowing prose only
+
+ASSESSMENT DATA:
+${areaSections}
+
+Return ONLY a valid JSON object. No preamble, no markdown fences. Structure:
+{
+  "Area Name": {
+    "Topic Name": "narrative paragraph text here"
+  }
+}`
+      }]
+    })
+  });
+
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  const raw = data.content.map(c => c.text || "").join("").trim();
+  const clean = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+  return JSON.parse(clean);
 }
 
 // ─── Report Overlay ───────────────────────────────────────────────────────────
@@ -1604,7 +1706,7 @@ function printRecsOnly(recs, user) {
   openPrintWindow(html, `${dateStamp()}_NTT_DATA_Action_Plan`);
 }
 
-function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, onSummaryGenerated, onRecsGenerated }) {
+function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, cachedAreaSummaries, onSummaryGenerated, onRecsGenerated, onAreaSummariesGenerated }) {
   const [status, setStatus] = useState("generating"); // generating | ready | error
   const [errorMsg, setErrorMsg] = useState("");
   const [aiError, setAiError] = useState("");
@@ -1612,10 +1714,11 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, on
   const [html, setHtml] = useState("");
   const summaryRef = useRef(null);
   const recsRef    = useRef(null);
+  const areaSummariesRef = useRef(null);
 
-  const rebuild = (summary, recs, withRecs) => {
+  const rebuild = (summary, recs, withRecs, areaSummaries) => {
     try {
-      setHtml(buildReportHTML(user, responses, summary, withRecs ? recs : null));
+      setHtml(buildReportHTML(user, responses, summary, withRecs ? recs : null, areaSummaries));
     } catch (e) {
       console.error("buildReportHTML failed:", e);
       setErrorMsg(e.message || String(e));
@@ -1624,9 +1727,9 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, on
   };
 
   useEffect(() => {
-    // Render static report immediately so something is visible right away
+    // Render static report immediately
     try {
-      setHtml(buildReportHTML(user, responses, null, null));
+      setHtml(buildReportHTML(user, responses, null, null, null));
     } catch (e) {
       console.error("Initial buildReportHTML failed:", e);
       setErrorMsg(e.message || String(e));
@@ -1634,12 +1737,13 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, on
       return;
     }
 
-    // If both cached values exist, skip API calls entirely
-    if (cachedSummary && cachedRecs) {
+    // If all three cached values exist, skip all API calls
+    if (cachedSummary && cachedRecs && cachedAreaSummaries) {
       summaryRef.current = cachedSummary;
       recsRef.current    = cachedRecs;
+      areaSummariesRef.current = cachedAreaSummaries;
       try {
-        setHtml(buildReportHTML(user, responses, cachedSummary, null));
+        setHtml(buildReportHTML(user, responses, cachedSummary, null, cachedAreaSummaries));
         setStatus("ready");
       } catch (e) {
         setErrorMsg(e.message || String(e));
@@ -1648,40 +1752,31 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, on
       return;
     }
 
-    // Otherwise make only the calls we need
-    const summaryCall = cachedSummary
-      ? Promise.resolve(cachedSummary)
-      : generateAISummary(user, responses);
-    const recsCall = cachedRecs
-      ? Promise.resolve(cachedRecs)
-      : generateRecommendations(user, responses);
+    // Make only the calls we need
+    const summaryCall      = cachedSummary       ? Promise.resolve(cachedSummary)       : generateAISummary(user, responses);
+    const recsCall         = cachedRecs           ? Promise.resolve(cachedRecs)           : generateRecommendations(user, responses);
+    const areaSummaryCall  = cachedAreaSummaries  ? Promise.resolve(cachedAreaSummaries)  : generateAreaSummaries(responses);
 
-    // AI calls in parallel — allSettled captures both successes and failures
-    Promise.allSettled([summaryCall, recsCall]).then(([sRes, rRes]) => {
-      const summary = (sRes.status === "fulfilled" && sRes.value) ? sRes.value : null;
-      const recs    = (rRes.status === "fulfilled" && rRes.value)  ? rRes.value  : null;
+    Promise.allSettled([summaryCall, recsCall, areaSummaryCall]).then(([sRes, rRes, asRes]) => {
+      const summary      = (sRes.status  === "fulfilled" && sRes.value)  ? sRes.value  : null;
+      const recs         = (rRes.status  === "fulfilled" && rRes.value)  ? rRes.value  : null;
+      const areaSummaries = (asRes.status === "fulfilled" && asRes.value) ? asRes.value : null;
 
-      // Log individual failures regardless of whether the other succeeded
-      if (sRes.status === "rejected") {
-        console.error("AI summary error:", sRes.reason?.message || sRes.reason);
-        setAiError(`Summary failed: ${sRes.reason?.message || sRes.reason || "unknown"}`);
-      } else if (!sRes.value) {
-        console.error("AI summary returned empty");
-        setAiError("Summary returned empty — check Netlify function logs");
-      }
-      if (rRes.status === "rejected") {
-        console.error("AI recs error:", rRes.reason?.message || rRes.reason);
-      }
+      if (sRes.status  === "rejected") { console.error("AI summary error:", sRes.reason?.message || sRes.reason); setAiError(`Summary failed: ${sRes.reason?.message || sRes.reason || "unknown"}`); }
+      else if (!sRes.value) { console.error("AI summary returned empty"); setAiError("Summary returned empty"); }
+      if (rRes.status  === "rejected") console.error("AI recs error:", rRes.reason?.message || rRes.reason);
+      if (asRes.status === "rejected") console.error("AI area summaries error:", asRes.reason?.message || asRes.reason);
 
       summaryRef.current = summary;
       recsRef.current    = recs;
+      areaSummariesRef.current = areaSummaries;
 
-      // Persist newly generated values to parent state + storage
-      if (summary && !cachedSummary && onSummaryGenerated) onSummaryGenerated(summary);
-      if (recs    && !cachedRecs    && onRecsGenerated)    onRecsGenerated(recs);
+      if (summary      && !cachedSummary      && onSummaryGenerated)      onSummaryGenerated(summary);
+      if (recs         && !cachedRecs         && onRecsGenerated)         onRecsGenerated(recs);
+      if (areaSummaries && !cachedAreaSummaries && onAreaSummariesGenerated) onAreaSummariesGenerated(areaSummaries);
 
       try {
-        setHtml(buildReportHTML(user, responses, summary, null));
+        setHtml(buildReportHTML(user, responses, summary, null, areaSummaries));
         setStatus("ready");
       } catch (e) {
         console.error("buildReportHTML (with AI) failed:", e);
@@ -1699,7 +1794,7 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, on
 
   const handleToggle = (val) => {
     setIncludeRecs(val);
-    if (status === "ready") rebuild(summaryRef.current, null, false);
+    if (status === "ready") rebuild(summaryRef.current, null, false, areaSummariesRef.current);
   };
 
   // ── Error screen ─────────────────────────────────────────────────────────────
@@ -2308,6 +2403,7 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
   const [topicRecs, setTopicRecs] = useState(null);
   const [reportSummary, setReportSummary] = useState(null);
   const [reportRecs, setReportRecs] = useState(null);
+  const [reportAreaSummaries, setReportAreaSummaries] = useState(null);
 
   // Expose a way for Root to clear all AI cache state when scores change
   useEffect(() => {
@@ -2315,23 +2411,16 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
       setTopicRecs(null);
       setReportSummary(null);
       setReportRecs(null);
+      setReportAreaSummaries(null);
     });
   }, []);
 
   // Load cached report AI content from storage on mount
   useEffect(() => {
     (async () => {
-      try {
-        const s = await window.storage.get("dmm_report_summary");
-        if (s?.value) setReportSummary(s.value);
-      } catch (e) {}
-      try {
-        const r = await window.storage.get("dmm_report_recs");
-        if (r?.value) {
-          const parsed = JSON.parse(r.value);
-          if (Array.isArray(parsed)) setReportRecs(parsed);
-        }
-      } catch (e) {}
+      try { const s = await window.storage.get("dmm_report_summary");         if (s?.value) setReportSummary(s.value); } catch (e) {}
+      try { const r = await window.storage.get("dmm_report_recs");            if (r?.value) { const p = JSON.parse(r.value); if (Array.isArray(p)) setReportRecs(p); } } catch (e) {}
+      try { const a = await window.storage.get("dmm_report_area_summaries");  if (a?.value) { const p = JSON.parse(a.value); if (p && typeof p === "object") setReportAreaSummaries(p); } } catch (e) {}
     })();
   }, []);
   const stats = getStats(responses);
@@ -2428,6 +2517,7 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
           onClose={() => setShowReport(false)}
           cachedSummary={reportSummary}
           cachedRecs={reportRecs}
+          cachedAreaSummaries={reportAreaSummaries}
           onSummaryGenerated={s => {
             setReportSummary(s);
             try { window.storage.set("dmm_report_summary", s); } catch (e) {}
@@ -2435,6 +2525,10 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
           onRecsGenerated={r => {
             setReportRecs(r);
             try { window.storage.set("dmm_report_recs", JSON.stringify(r)); } catch (e) {}
+          }}
+          onAreaSummariesGenerated={a => {
+            setReportAreaSummaries(a);
+            try { window.storage.set("dmm_report_area_summaries", JSON.stringify(a)); } catch (e) {}
           }}
         />
       )}
@@ -2478,6 +2572,7 @@ export default function App() {
     try { await window.storage.delete("dmm_topic_recs"); } catch (e) {}
     try { await window.storage.delete("dmm_report_summary"); } catch (e) {}
     try { await window.storage.delete("dmm_report_recs"); } catch (e) {}
+    try { await window.storage.delete("dmm_report_area_summaries"); } catch (e) {}
     // Also clear in-memory recs in MainApp
     if (clearTopicRecsRef.current) clearTopicRecsRef.current();
   };
