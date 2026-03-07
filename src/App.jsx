@@ -1175,567 +1175,6 @@ function areaRadarSVG(aName, responses, size = 300, projectedScores = null) {
 }
 
 // ─── Payoff Matrix SVG ────────────────────────────────────────────────────────
-function payoffMatrixSVG(recs, size = 480) {
-  const pad = { top: 36, right: 24, bottom: 52, left: 52 };
-  const w = size, h = size * 0.72;
-  const plotW = w - pad.left - pad.right;
-  const plotH = h - pad.top - pad.bottom;
-
-  // Quadrant fills — x-axis: Low effort (left) → High effort (right)
-  //                          y-axis: Low value (bottom) → High value (top, inverted in SVG)
-  // Top-left:     low effort  + high value = QUICK WINS          (green)
-  // Top-right:    high effort + high value = STRATEGIC INVESTMENTS (blue)
-  // Bottom-left:  low effort  + low value  = FILL-INS             (amber)
-  // Bottom-right: high effort + low value  = DEPRIORITIZE         (grey)
-  const quads = [
-    { x: pad.left,           y: pad.top,           w: plotW/2, h: plotH/2, fill: "#E0F5EC", label: "QUICK\nWINS",             lx: pad.left + plotW*0.25, ly: pad.top + 14 },
-    { x: pad.left + plotW/2, y: pad.top,           w: plotW/2, h: plotH/2, fill: "#DAEEF9", label: "STRATEGIC\nINVESTMENTS",  lx: pad.left + plotW*0.75, ly: pad.top + 14 },
-    { x: pad.left,           y: pad.top + plotH/2, w: plotW/2, h: plotH/2, fill: "#FFF5CC", label: "FILL-INS",                lx: pad.left + plotW*0.25, ly: pad.top + plotH/2 + 14 },
-    { x: pad.left + plotW/2, y: pad.top + plotH/2, w: plotW/2, h: plotH/2, fill: "#f8fafc", label: "DEPRIORITIZE",            lx: pad.left + plotW*0.75, ly: pad.top + plotH/2 + 14 },
-  ];
-
-  const quadRects = quads.map(q =>
-    `<rect x="${q.x}" y="${q.y}" width="${q.w}" height="${q.h}" fill="${q.fill}" />
-     <text x="${q.lx}" y="${q.ly}" text-anchor="middle" font-size="8.5" font-weight="700" fill="#94a3b8" font-family="Outfit,sans-serif" letter-spacing="0.8">${q.label.replace("\n", `</text><text x="${q.lx}" y="${q.ly + 11}" text-anchor="middle" font-size="8.5" font-weight="700" fill="#94a3b8" font-family="Outfit,sans-serif" letter-spacing="0.8">`)}</text>`
-  ).join("\n");
-
-  // Grid lines
-  const gridLines = `
-    <line x1="${pad.left}" y1="${pad.top + plotH/2}" x2="${pad.left + plotW}" y2="${pad.top + plotH/2}" stroke="#e2e8f0" stroke-width="1.5" stroke-dasharray="4,3"/>
-    <line x1="${pad.left + plotW/2}" y1="${pad.top}" x2="${pad.left + plotW/2}" y2="${pad.top + plotH}" stroke="#e2e8f0" stroke-width="1.5" stroke-dasharray="4,3"/>
-    <rect x="${pad.left}" y="${pad.top}" width="${plotW}" height="${plotH}" fill="none" stroke="#e2e8f0" stroke-width="1.5" rx="4"/>`;
-
-  // Axis labels
-  const axisLabels = `
-    <text x="${pad.left - 10}" y="${pad.top + plotH/2}" text-anchor="middle" font-size="9" fill="#64748b" font-family="Outfit,sans-serif" transform="rotate(-90,${pad.left-10},${pad.top + plotH/2})">BUSINESS VALUE →</text>
-    <text x="${pad.left}" y="${h - 8}" font-size="9" fill="#94a3b8" font-family="Outfit,sans-serif">Low</text>
-    <text x="${pad.left + plotW - 14}" y="${h - 8}" font-size="9" fill="#94a3b8" font-family="Outfit,sans-serif">High</text>
-    <text x="${pad.left}" y="${pad.top + plotH + 2}" font-size="9" fill="#94a3b8" font-family="Outfit,sans-serif" dominant-baseline="hanging">Low</text>
-    <text x="${pad.left}" y="${pad.top - 6}" font-size="9" fill="#94a3b8" font-family="Outfit,sans-serif">High</text>
-    <text x="${pad.left + plotW/2}" y="${h - 8}" text-anchor="middle" font-size="9" font-weight="600" fill="#64748b" font-family="Outfit,sans-serif">IMPLEMENTATION EFFORT →</text>`;
-
-  // Dot color matches quadrant
-  const dotColor = (effort, value) => {
-    const highVal = value >= 3;
-    const lowEff = effort <= 3;
-    if (highVal && lowEff)  return "#068941";  // Quick Win — green
-    if (highVal && !lowEff) return "#0072BC";  // Strategic Investment — blue
-    if (!highVal && lowEff) return "#CC7700";  // Fill-in — amber
-    return "#94a3b8";                           // Deprioritize — grey
-  };
-
-  // Place dots with quadrant-aware spreading.
-  // Each dot stays within its correct quadrant; ties are spread using a
-  // deterministic offset grid so the chart is stable across renders.
-  const midX = pad.left + plotW / 2;
-  const midY = pad.top  + plotH / 2;
-
-  // Group items by quadrant so we can spread within each zone
-  const byQuad = { TL: [], TR: [], BL: [], BR: [] };
-  recs.forEach((r, i) => {
-    const q = (r.value >= 3 ? "T" : "B") + (r.effort <= 3 ? "L" : "R");
-    byQuad[q].push({ r, i });
-  });
-
-  // For each quadrant, compute the usable rect and lay dots out in a grid
-  const quadBounds = {
-    TL: { x1: pad.left + 14, x2: midX - 14, y1: pad.top + 14,  y2: midY - 14 },
-    TR: { x1: midX + 14,     x2: pad.left + plotW - 14, y1: pad.top + 14, y2: midY - 14 },
-    BL: { x1: pad.left + 14, x2: midX - 14, y1: midY + 14, y2: pad.top + plotH - 14 },
-    BR: { x1: midX + 14,     x2: pad.left + plotW - 14, y1: midY + 14, y2: pad.top + plotH - 14 },
-  };
-
-  const dotPositions = {};
-  ["TL","TR","BL","BR"].forEach(qk => {
-    const items = byQuad[qk];
-    const b = quadBounds[qk];
-    const bw = b.x2 - b.x1;
-    const bh = b.y2 - b.y1;
-    items.forEach((item, slot) => {
-      const { r, i } = item;
-      // Base position from scores, mapped into the quadrant's half
-      // effort: TL/BL → 1-3, TR/BR → 4-5
-      const effortRange = qk[1] === "L" ? [1, 3] : [4, 5];
-      const valueRange  = qk[0] === "T" ? [3, 5] : [1, 2];
-      const effortClamped = Math.max(effortRange[0], Math.min(effortRange[1], r.effort));
-      const valueClamped  = Math.max(valueRange[0],  Math.min(valueRange[1],  r.value));
-      const rawX = b.x1 + ((effortClamped - effortRange[0]) / Math.max(1, effortRange[1] - effortRange[0])) * bw;
-      const rawY = b.y1 + ((valueRange[1]  - valueClamped)  / Math.max(1, valueRange[1] - valueRange[0]))  * bh;
-      // Deterministic spread offset for ties: arrange in a small grid
-      const cols = Math.ceil(Math.sqrt(items.length));
-      const row  = Math.floor(slot / cols);
-      const col  = slot % cols;
-      const spreadX = items.length > 1 ? (col - (cols - 1) / 2) * 22 : 0;
-      const spreadY = items.length > 1 ? (row - (Math.ceil(items.length / cols) - 1) / 2) * 22 : 0;
-      let fx = rawX + spreadX;
-      let fy = rawY + spreadY;
-      // Hard clamp within quadrant
-      fx = Math.max(b.x1, Math.min(b.x2, fx));
-      fy = Math.max(b.y1, Math.min(b.y2, fy));
-      dotPositions[i] = { x: fx, y: fy };
-    });
-  });
-
-  const dots = recs.map((r, i) => {
-    const { x, y } = dotPositions[i];
-    const dc = dotColor(r.effort, r.value);
-    return `<circle cx="${x}" cy="${y}" r="12" fill="${dc}" opacity="0.9"/>
-            <text x="${x}" y="${y + 4}" text-anchor="middle" font-size="10" font-weight="700" fill="white" font-family="Outfit,sans-serif">${i+1}</text>`;
-  }).join("\n");
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-    ${quadRects}
-    ${gridLines}
-    ${axisLabels}
-    ${dots}
-  </svg>`;
-}
-
-// ─── Recommendations HTML Section ─────────────────────────────────────────────
-function recommendationsSectionHTML(recs) {
-  const priorityColor = (effort, value) => {
-    if (value >= 3 && effort <= 3) return { color: "#068941", bg: "#E0F5EC", label: "Quick Win" };
-    if (value >= 3 && effort > 3)  return { color: "#0072BC", bg: "#DAEEF9", label: "Strategic Investment" };
-    if (value < 3  && effort <= 3) return { color: "#CC7700", bg: "#FFF5CC", label: "Fill-in" };
-    return { color: "#94a3b8", bg: "#f8fafc", label: "Deprioritize" };
-  };
-  const effortLabel = e => ["","Low","Low-Med","Medium","Med-High","High"][e] || "Medium";
-  const valueLabel  = v => ["","Low","Low-Med","Medium","Med-High","High"][v] || "Medium";
-
-  // Safari PDF engine reliable pattern:
-  // - No border-radius on block containers (creates clip region that stops paint)
-  // - No page-break-inside:avoid on multi-line blocks (causes PDF truncation)
-  // - Each card is a top-level <div> sibling with only left-border accent, no rounded box
-  const cards = recs.map((r, i) => {
-    const p = priorityColor(r.effort, r.value);
-    const sourceGoalsHTML = r.source_goals?.length
-      ? `<div style="margin-bottom:7px;display:flex;flex-wrap:wrap;gap:4px;">${r.source_goals.map(g =>
-          `<span style="font-size:9px;color:${p.color};background:${p.bg};border:1px solid ${p.color}30;padding:1px 7px;font-family:'Outfit',sans-serif;font-weight:600;">${g}</span>`
-        ).join("")}</div>`
-      : "";
-    const evidenceHTML = r.evidence
-      ? `<div style="background:${p.bg};border-left:3px solid ${p.color};padding:7px 10px;margin-bottom:8px;">
-          <div style="font-size:9px;font-weight:700;color:${p.color};letter-spacing:1px;margin-bottom:2px;font-family:'Outfit',sans-serif;">ASSESSMENT EVIDENCE</div>
-          <div style="font-size:11px;color:#334155;line-height:1.5;font-style:italic;font-family:'Outfit',sans-serif;">"${r.evidence}"</div>
-        </div>`
-      : "";
-    return `<div style="margin:0 28px 14px;padding:14px 16px;background:#fafafa;border:1px solid #e2e8f0;border-left:4px solid ${p.color};">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:6px;">
-        <div style="display:flex;align-items:flex-start;gap:8px;flex:1;">
-          <span style="width:22px;height:22px;background:${p.color};color:white;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'Outfit',sans-serif;">${i+1}</span>
-          <div>
-            <div style="font-size:13px;font-weight:700;color:#0f172a;font-family:'Outfit',sans-serif;margin-bottom:2px;">${r.title}</div>
-            <div style="font-size:10px;color:#94a3b8;font-family:'Outfit',sans-serif;">${r.area}${r.topic ? " &rsaquo; " + r.topic : ""}</div>
-          </div>
-        </div>
-        <span style="background:${p.bg};color:${p.color};padding:2px 9px;font-size:10px;font-weight:700;white-space:nowrap;flex-shrink:0;font-family:'Outfit',sans-serif;">${p.label}</span>
-      </div>
-      ${sourceGoalsHTML}
-      <p style="margin:0 0 8px;font-size:12px;color:#334155;line-height:1.6;font-family:'Outfit',sans-serif;">${r.description}</p>
-      ${evidenceHTML}
-      <div style="background:white;padding:8px 12px;border:1px solid #e2e8f0;margin-bottom:8px;">
-        <div style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:1px;margin-bottom:3px;font-family:'Outfit',sans-serif;">BUSINESS VALUE</div>
-        <div style="font-size:11px;color:#334155;line-height:1.55;font-family:'Outfit',sans-serif;">${r.business_value}</div>
-      </div>
-      <div style="display:flex;gap:16px;">
-        <div style="font-size:11px;color:#64748b;font-family:'Outfit',sans-serif;">Effort: <strong style="color:#0f172a;">${effortLabel(r.effort)}</strong></div>
-        <div style="font-size:11px;color:#64748b;font-family:'Outfit',sans-serif;">Value: <strong style="color:#0f172a;">${valueLabel(r.value)}</strong></div>
-      </div>
-    </div>`;
-  }).join("\n");
-
-  return `
-    <div style="page-break-before:always;padding:44px 28px 24px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;padding-bottom:20px;border-bottom:1.5px solid #f1f5f9;">
-        ${nttLogoBlackHTML(24)}
-        <span style="font-size:10px;font-weight:700;color:#cbd5e1;letter-spacing:2px;font-family:'Outfit',sans-serif;">CMMI DMM ASSESSMENT REPORT</span>
-      </div>
-      <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:2px;margin:0 0 6px;font-family:'Outfit',sans-serif;">RECOMMENDATIONS</p>
-      <h2 style="font-family:'Fraunces',serif;font-size:30px;font-weight:700;color:#0f172a;margin:0 0 24px;">Prioritized Action Plan</h2>
-      <div style="padding:20px 24px;background:#f8fafc;border:1px solid #e2e8f0;margin-bottom:4px;">
-        <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin:0 0 14px;font-family:'Outfit',sans-serif;">VALUE vs. EFFORT PAYOFF MATRIX</p>
-        <div style="display:flex;justify-content:center;">${payoffMatrixSVG(recs, 460)}</div>
-        <div style="display:flex;gap:14px;justify-content:center;margin-top:12px;flex-wrap:wrap;">
-          ${[["#068941","#E0F5EC","Quick Win"],["#0072BC","#DAEEF9","Strategic Investment"],["#CC7700","#FFF5CC","Fill-in"],["#94a3b8","#f1f5f9","Deprioritize"]].map(([c,bg,l]) =>
-            `<div style="display:flex;align-items:center;gap:5px;background:${bg};padding:3px 9px;">
-              <span style="width:9px;height:9px;background:${c};display:inline-block;"></span>
-              <span style="font-size:10px;font-weight:600;color:${c};font-family:'Outfit',sans-serif;">${l}</span>
-            </div>`).join("")}
-        </div>
-      </div>
-    </div>
-    ${cards}
-    <div style="height:32px;"></div>`;
-}
-
-// ─── PDF Report Builder ───────────────────────────────────────────────────────
-function buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projectedScores = null, areaRecsAndProjections = null) {
-  return Object.entries(AREAS).map(([aName, area]) => {
-    const as_ = stats.areaStats[aName];
-    const areaAvg = as_.avg;
-    const topicScores = getTopicScores(aName, responses);
-
-    // ── Topic score table ──────────────────────────────────────────────────────
-    // ── Area radar SVG ────────────────────────────────────────────────────────
-    const areaProjections = projectedScores ? (projectedScores[aName] ?? null) : null;
-    const radarSvg = areaRadarSVG(aName, responses, 320, areaProjections);
-
-    // ── AI topic narratives ───────────────────────────────────────────────────
-    const areaNarratives = areaSummaries ? (areaSummaries[aName] || areaSummaries[Object.keys(areaSummaries).find(k => k.toLowerCase().includes(aName.toLowerCase().slice(0,6))) || ""] || null) : null;
-
-    const narrativeSection = area.topics.map((topic, tIdx) => {
-      const scored = topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean);
-      if (scored.length === 0) return "";
-      const topicAvg = scored.reduce((a, b) => a + b, 0) / scored.length;
-      const narrative = areaNarratives
-        ? (areaNarratives[topic.name] || areaNarratives[Object.keys(areaNarratives).find(k => k.toLowerCase().includes(topic.name.toLowerCase().slice(0,6))) || ""] || null)
-        : null;
-
-      const areaTopicRecs = areaRecsAndProjections ? (areaRecsAndProjections[aName] || null) : null;
-      const topicRecData = areaTopicRecs
-        ? (areaTopicRecs[topic.name] || areaTopicRecs[Object.keys(areaTopicRecs).find(k => k.toLowerCase().includes(topic.name.toLowerCase().slice(0, 6))) || ""] || null)
-        : null;
-      const recBullets = topicRecData?.recs?.length > 0
-        ? `<div style="margin-top:14px;padding-top:12px;border-top:1px solid ${area.color}18;">
-            <p style="font-size:9.5px;font-weight:700;color:#94a3b8;letter-spacing:1.4px;margin:0 0 8px;font-family:'Outfit',sans-serif;text-transform:uppercase;">Recommendations</p>
-            <ul style="margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:7px;">
-              ${topicRecData.recs.map(r => `<li style="display:flex;align-items:flex-start;gap:9px;font-size:12.5px;color:#334155;line-height:1.65;font-family:'Outfit',sans-serif;">
-                <span style="width:18px;height:18px;border-radius:50%;background:${area.color}18;border:1.5px solid ${area.color}40;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:${area.color};flex-shrink:0;margin-top:1px;">→</span>
-                <span>${r}</span>
-              </li>`).join("")}
-            </ul>
-          </div>`
-        : "";
-
-      return `<div style="margin-bottom:24px;padding-bottom:24px;border-bottom:1px solid #f1f5f9;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-bottom:8px;border-bottom:1.5px solid ${area.color}20;">
-          <span style="font-size:13px;font-weight:700;color:#0f172a;font-family:'Outfit',sans-serif;">${topic.name}</span>
-          ${badge(topicAvg)}
-        </div>
-        ${narrative
-          ? `<p style="margin:0;font-size:13px;color:#334155;line-height:1.75;font-family:'Outfit',sans-serif;">${narrative}</p>`
-          : `<p style="margin:0;font-size:12px;color:#94a3b8;font-style:italic;font-family:'Outfit',sans-serif;">AI narrative pending — click Generate in the report overlay to populate.</p>`
-        }
-        ${recBullets}
-      </div>`;
-    }).join("");
-
-    return `<div style="padding:44px 28px;page-break-before:always;overflow:visible;">
-
-      <!-- Page header -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:1.5px solid #f1f5f9;">
-        ${nttLogoBlackHTML(20)}
-        <span style="font-size:10px;font-weight:700;color:#cbd5e1;letter-spacing:2px;font-family:'Outfit',sans-serif;">CMMI DMM ASSESSMENT REPORT</span>
-      </div>
-
-      <!-- Area title -->
-      <div style="background:linear-gradient(135deg,${area.color}12,${area.color}04);border-radius:12px;padding:20px 26px;margin-bottom:24px;border:1.5px solid ${area.color}1a;">
-        <div style="display:flex;align-items:center;justify-content:space-between;">
-          <div style="display:flex;align-items:center;gap:14px;">
-            <img src="${area.icon}" alt="" style="width:32px;height:32px;object-fit:contain;" />
-            <div>
-              <h2 style="margin:0;font-size:22px;font-weight:700;color:#0f172a;font-family:'Fraunces',serif;">${aName}</h2>
-              <p style="margin:4px 0 0;font-size:12px;color:#64748b;font-family:'Outfit',sans-serif;">${area.topics.length} topics · ${as_.total} goals · ${as_.scored} scored</p>
-            </div>
-          </div>
-          ${areaAvg ? `<div style="text-align:right;">${badge(areaAvg)}<div style="font-size:10px;color:#94a3b8;margin-top:5px;font-family:'Outfit',sans-serif;">Area average</div></div>` : ""}
-        </div>
-      </div>
-
-      <!-- Centered radar chart + legend -->
-      <div style="display:flex;flex-direction:column;align-items:center;margin-bottom:28px;">
-        <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin:0 0 10px;font-family:'Outfit',sans-serif;">MATURITY PROFILE</p>
-        ${radarSvg}
-      </div>
-
-      <!-- AI Assessment section -->
-      <div style="border-top:1.5px solid #f1f5f9;padding-top:22px;">
-        <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin:0 0 18px;font-family:'Outfit',sans-serif;">AI ASSESSMENT — BY TOPIC</p>
-        ${narrativeSection || '<p style="color:#94a3b8;font-size:12px;font-family:Outfit,sans-serif;">No goals have been scored for this area yet.</p>'}
-      </div>
-
-    </div>`;
-  }).join("");
-}
-
-function buildReportHTML(user, responses, aiSummary = null, recommendations = null, areaSummaries = null, projectedScores = null, areaRecsAndProjections = null) {
-  const stats = getStats(responses);
-  const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-  const overallLevel = stats.avg ? Math.min(5, Math.max(1, Math.round(stats.avg))) : null;
-  const overallCmmi = overallLevel ? CMMI[overallLevel] : null;
-
-  const C = {
-    1: { color: "#B22000", bg: "#FDECEA", label: "Performed" },
-    2: { color: "#E42600", bg: "#FDE8E4", label: "Managed" },
-    3: { color: "#CC7700", bg: "#FFF5CC", label: "Defined" },
-    4: { color: "#0072BC", bg: "#DAEEF9", label: "Measured" },
-    5: { color: "#068941", bg: "#E0F5EC", label: "Optimized" },
-  };
-
-  const badge = (score) => {
-    if (!score) return `<span style="color:#94a3b8;font-size:12px;font-family:'Outfit',sans-serif;">Not scored</span>`;
-    const lvl = Math.min(5, Math.max(1, Math.round(score)));
-    const c = C[lvl];
-    return `<span style="background:${c.bg};color:${c.color};border:1.5px solid ${c.color}50;border-radius:20px;padding:3px 11px;font-size:12px;font-weight:700;font-family:'Outfit',sans-serif;white-space:nowrap;">${score.toFixed(1)} — ${c.label}</span>`;
-  };
-
-  const bar = (score, width = 100) => {
-    if (!score) return "";
-    const lvl = Math.min(5, Math.max(1, Math.round(score)));
-    const c = C[lvl];
-    return `<div style="background:#f1f5f9;border-radius:4px;height:7px;width:${width}px;display:inline-block;vertical-align:middle;margin-left:8px;"><div style="width:${(score/5)*100}%;background:${c.color};height:7px;border-radius:4px;"></div></div>`;
-  };
-
-  const areaRows = Object.entries(AREAS).map(([aName, area]) => {
-    const as_ = stats.areaStats[aName];
-    const avg = as_.avg;
-    const pct = as_.total > 0 ? Math.round((as_.scored / as_.total) * 100) : 0;
-    return `<tr style="border-bottom:1px solid #f1f5f9;">
-      <td style="padding:11px 16px;font-weight:600;color:#0f172a;font-size:13px;font-family:'Outfit',sans-serif;"><img src="${area.icon}" alt="" style="width:16px;height:16px;object-fit:contain;vertical-align:middle;margin-right:6px;" />${aName}</td>
-      <td style="padding:11px 16px;text-align:center;">${avg ? badge(avg) : '<span style="color:#cbd5e1;font-size:13px;">—</span>'}</td>
-      <td style="padding:11px 16px;text-align:center;font-size:12px;color:#64748b;font-family:'Outfit',sans-serif;">${as_.scored}/${as_.total}</td>
-      <td style="padding:11px 16px;"><div style="background:#f1f5f9;border-radius:4px;height:8px;width:${Math.max(pct,2)}px;max-width:120px;"><div style="width:100%;background:${area.color};height:8px;border-radius:4px;"></div></div></td>
-    </tr>`;
-  }).join("");
-
-  const areaDetailPages = buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projectedScores, areaRecsAndProjections);
-
-  return `
-    <style>
-      @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Fraunces:wght@400;600;700&display=swap');
-      * { box-sizing:border-box; }
-      @media print {
-        @page { margin:14mm 8mm 16mm; size:A4; }
-        @page { @bottom-center { content: "Page " counter(page) " of " counter(pages); font-family: 'Outfit', sans-serif; font-size: 9pt; color: #94a3b8; } }
-        body { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
-      }
-    </style>
-
-    <!-- COVER -->
-    <div style="page-break-after:always;display:flex;flex-direction:column;justify-content:center;padding:56px 60px;min-height:100%;background:white;">
-      <div style="margin-bottom:44px;">
-        <div style="display:flex;align-items:center;gap:16px;margin-bottom:36px;">
-          ${nttLogoBlackHTML(32)}
-          <div style="width:1px;height:32px;background:#e2e8f0;"></div>
-          <span style="color:#94a3b8;font-size:11px;font-weight:700;letter-spacing:2px;font-family:'Outfit',sans-serif;">CMMI DMM ASSESSMENT REPORT</span>
-        </div>
-        <h1 style="font-family:'Fraunces',serif;font-size:48px;font-weight:700;color:#0f172a;line-height:1.1;margin:0 0 10px;">${user.org}</h1>
-        <h2 style="font-family:'Fraunces',serif;font-size:24px;font-weight:400;color:#0072BC;font-style:italic;margin:0;">Data Management Maturity Evaluation</h2>
-      </div>
-      <div style="display:flex;gap:44px;margin-bottom:56px;align-items:flex-end;">
-        ${stats.avg ? `<div>
-          <div style="font-size:10px;color:#94a3b8;font-weight:600;letter-spacing:1.5px;margin-bottom:6px;font-family:'Outfit',sans-serif;">OVERALL MATURITY SCORE</div>
-          <div style="font-family:'Fraunces',serif;font-size:68px;font-weight:700;color:#0f172a;line-height:1;">${stats.avg ? stats.avg.toFixed(1) : "—"}</div>
-          <div style="font-size:15px;color:#0072BC;margin-top:5px;font-family:'Outfit',sans-serif;">out of 5.0 — ${overallCmmi?.label || ""}</div>
-        </div>` : ""}
-        <div style="border-left:1px solid #e2e8f0;padding-left:44px;padding-bottom:6px;">
-          <div style="font-size:10px;color:#94a3b8;font-weight:600;letter-spacing:1.5px;margin-bottom:10px;font-family:'Outfit',sans-serif;">ASSESSMENT COVERAGE</div>
-          <div style="font-size:30px;font-weight:700;color:#0f172a;font-family:'Outfit',sans-serif;">${stats.scoredGoals}<span style="font-size:15px;color:#94a3b8;font-weight:400;"> / ${stats.totalGoals} goals</span></div>
-          <div style="font-size:13px;color:#94a3b8;margin-top:3px;font-family:'Outfit',sans-serif;">${stats.pct}% complete</div>
-        </div>
-      </div>
-      <div style="border-top:1px solid #e2e8f0;padding-top:28px;display:flex;gap:44px;">
-        <div><div style="font-size:9px;color:#94a3b8;letter-spacing:1.5px;margin-bottom:4px;font-family:'Outfit',sans-serif;">PREPARED BY</div><div style="font-size:14px;color:#0f172a;font-weight:500;font-family:'Outfit',sans-serif;">${user.name}</div>${user.role?`<div style="font-size:11px;color:#64748b;font-family:'Outfit',sans-serif;">${user.role}</div>`:""}</div>
-        <div><div style="font-size:9px;color:#94a3b8;letter-spacing:1.5px;margin-bottom:4px;font-family:'Outfit',sans-serif;">DATE</div><div style="font-size:14px;color:#0f172a;font-weight:500;font-family:'Outfit',sans-serif;">${date}</div></div>
-        <div><div style="font-size:9px;color:#94a3b8;letter-spacing:1.5px;margin-bottom:4px;font-family:'Outfit',sans-serif;">FRAMEWORK</div><div style="font-size:14px;color:#0f172a;font-weight:500;font-family:'Outfit',sans-serif;">CMMI DMM</div></div>
-      </div>
-    </div>
-
-    <!-- EXECUTIVE SUMMARY -->
-    <div style="padding:44px 28px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;padding-bottom:20px;border-bottom:1.5px solid #f1f5f9;">
-        ${nttLogoBlackHTML(24)}
-        <span style="font-size:10px;font-weight:700;color:#cbd5e1;letter-spacing:2px;font-family:'Outfit',sans-serif;">CMMI DMM ASSESSMENT REPORT</span>
-      </div>
-      <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:2px;margin:0 0 6px;font-family:'Outfit',sans-serif;">EXECUTIVE SUMMARY</p>
-
-      ${aiSummary ? (() => {
-        // Strip any markdown title lines (lines starting with ** or #) that Claude sometimes prepends
-        const cleaned = aiSummary
-          .split('\n')
-          .filter(line => !/^\*\*.*\*\*$/.test(line.trim()) && !/^#+\s/.test(line.trim()))
-          .join('\n')
-          .trim();
-        // Split into paragraphs and render
-        const paragraphStyle = `margin:12px 0 0;font-size:14px;color:#334155;line-height:1.85;font-family:Outfit,sans-serif;`;
-        const paras = cleaned.split(/\n\n+/).filter(Boolean);
-        const body = paras.map((p, i) =>
-          `<p style="${i === 0 ? 'margin:0;' : 'margin:14px 0 0;'}font-size:14px;color:#334155;line-height:1.85;font-family:Outfit,sans-serif;">${p.replace(/\n/g, '<br/>')}</p>`
-        ).join('');
-        return `
-      <div style="margin-bottom:32px;padding:32px 36px;background:#f8fafc;border-radius:14px;border:1.5px solid #e2e8f0;">
-        <h3 style="font-family:'Fraunces',serif;font-size:26px;font-weight:700;color:#0f172a;margin:0 0 20px;line-height:1.2;">Executive Assessment: Data Management Maturity</h3>
-        ${body}
-      </div>`;
-      })() : ""}
-
-      <div style="page-break-inside:avoid;">
-        <div style="background:#f8fafc;border-radius:12px;padding:14px 22px;margin-bottom:20px;border:1.5px solid #e2e8f0;">
-          <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin:0 0 10px;font-family:'Outfit',sans-serif;">CMMI DMM MATURITY SCALE</p>
-          <div style="display:flex;gap:8px;flex-wrap:nowrap;">
-            ${Object.entries(C).map(([lvl,c]) => `<div style="display:flex;align-items:center;gap:6px;background:${c.bg};border:1.5px solid ${c.color}40;border-radius:8px;padding:5px 10px;flex:1;min-width:0;">
-              <span style="width:18px;height:18px;border-radius:4px;background:${c.color};color:white;font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;font-family:'Outfit',sans-serif;flex-shrink:0;">${lvl}</span>
-              <span style="font-size:11px;font-weight:600;color:${c.color};font-family:'Outfit',sans-serif;white-space:nowrap;">${c.label}</span>
-            </div>`).join("")}
-          </div>
-        </div>
-
-        <table style="width:100%;border-collapse:collapse;border:1.5px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-bottom:20px;">
-          <thead><tr style="background:#f8fafc;">
-            <th style="padding:11px 16px;text-align:left;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.2px;font-family:'Outfit',sans-serif;">ASSESSMENT AREA</th>
-            <th style="padding:11px 16px;text-align:center;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.2px;font-family:'Outfit',sans-serif;">MATURITY SCORE</th>
-            <th style="padding:11px 16px;text-align:center;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.2px;font-family:'Outfit',sans-serif;">GOALS SCORED</th>
-            <th style="padding:11px 16px;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.2px;font-family:'Outfit',sans-serif;">COMPLETION</th>
-          </tr></thead>
-          <tbody>${areaRows}</tbody>
-        </table>
-
-        <div style="background:linear-gradient(160deg,#070F26,#0A1E3D);border-radius:16px;padding:24px 32px;display:flex;flex-direction:column;align-items:center;gap:14px;">
-          <p style="font-size:10px;font-weight:700;color:rgba(255,255,255,.35);letter-spacing:2px;margin:0;font-family:'Outfit',sans-serif;">MATURITY PROFILE — ALL ASSESSMENT AREAS</p>
-          ${masterRadarSVG(responses, 240)}
-          <div style="display:flex;flex-wrap:wrap;gap:8px 18px;justify-content:center;max-width:500px;">
-            ${Object.entries(AREAS).map(([aName, area]) => {
-              const ts = getTopicScores(aName, responses).filter(t => t.score > 0);
-              const avg = ts.length > 0 ? ts.reduce((a,b) => a + b.score, 0) / ts.length : null;
-              return `<div style="display:flex;align-items:center;gap:6px;">
-                <span style="width:9px;height:9px;border-radius:50%;background:${area.color};display:inline-block;flex-shrink:0;"></span>
-                <span style="font-size:10px;color:rgba(255,255,255,.55);font-family:'Outfit',sans-serif;">${area.short} — ${aName}</span>
-                ${avg ? `<span style="font-size:10px;font-weight:700;color:${area.color};font-family:'Outfit',sans-serif;">${avg.toFixed(1)}</span>` : ""}
-              </div>`;
-            }).join("")}
-          </div>
-        </div>
-      </div>
-
-    <!-- AREA PAGES -->
-    ${areaDetailPages}
-
-    <!-- RECOMMENDATIONS (optional) -->
-    ${recommendations && recommendations.length > 0 ? recommendationsSectionHTML(recommendations) : ""}
-  `;
-}
-
-// ─── Recs + Projections Generator ────────────────────────────────────────────
-// Single combined call per area: produces per-topic bullet recommendations AND
-// projected scores in one pass so projections are grounded in the actual recs.
-
-async function generateSingleAreaRecsAndProjections(aName, responses) {
-  const area = AREAS[aName];
-
-  const topicBlocks = area.topics.map((topic, tIdx) => {
-    const scored = topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean);
-    if (scored.length === 0) return null;
-    const avg = (scored.reduce((a, b) => a + b, 0) / scored.length).toFixed(1);
-
-    const goalLines = topic.goals.map((goalText, gIdx) => {
-      const r = responses[rKey(aName, tIdx, "goal", gIdx)];
-      if (!r?.score) return null;
-      const lines = [`    Goal ${gIdx + 1} (Score ${r.score}/5): ${goalText}`];
-      if (r.comment)   lines.push(`      Assessor notes: ${r.comment}`);
-      if (r.rationale) lines.push(`      AI rationale: ${r.rationale}`);
-      return lines.join("\n");
-    }).filter(Boolean);
-
-    return `Topic: ${topic.name} (current avg ${avg}/5)\n${goalLines.join("\n")}`;
-  }).filter(Boolean);
-
-  if (topicBlocks.length === 0) return null;
-
-  const res = await fetch("/api/ai", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 2000,
-      messages: [{
-        role: "user",
-        content: `You are a senior CMMI DMM data governance consultant at NTT DATA authoring a formal client assessment report.
-
-For each topic in the area below, produce:
-1. Three to four specific, actionable recommendations grounded directly in the assessment evidence — the scores, assessor notes, and rationales. Each recommendation must:
-   - Address a concrete gap or weakness identified in the evidence
-   - Name the specific capability, process, or artefact to build or fix
-   - Be achievable within a realistic programme of work (not aspirational boilerplate)
-   - Read as a clear directive a data governance practitioner can act on
-   Do NOT write generic recommendations (e.g. "establish data governance policies"). Every recommendation must be traceable to the evidence provided.
-
-2. A projected maturity score (1.0–5.0 CMMI scale) achievable after implementing these specific recommendations. Rules:
-   - Conservative: typical improvement is 0.3–0.8 points per improvement cycle
-   - Never project above 5.0 or below the current score
-   - If current score ≥ 4.0, cap projected improvement at 0.3 unless evidence clearly indicates near-readiness for next level
-   - The projected score must be consistent with the ambition of the recommendations you wrote
-
-ASSESSMENT AREA: ${aName}
-
-${topicBlocks.join("\n\n")}
-
-Return ONLY a valid JSON object. No preamble, no markdown fences, no explanation:
-{
-  "Exact Topic Name": {
-    "recs": [
-      "Specific recommendation 1",
-      "Specific recommendation 2",
-      "Specific recommendation 3"
-    ],
-    "projected": 2.8
-  }
-}`
-      }]
-    })
-  });
-
-  const data = await res.json();
-  if (data.error) throw new Error(data.error.message);
-  const raw = data.content.map(c => c.text || "").join("").trim();
-  const clean = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
-  const parsed = JSON.parse(clean);
-
-  const validated = {};
-  Object.entries(parsed).forEach(([topicName, val]) => {
-    if (!val || !Array.isArray(val.recs)) return;
-    const n = parseFloat(val.projected);
-    validated[topicName] = {
-      recs: val.recs.filter(r => typeof r === "string" && r.trim().length > 0),
-      projected: !isNaN(n) && n >= 1.0 && n <= 5.0 ? Math.round(n * 10) / 10 : null,
-    };
-  });
-  return Object.keys(validated).length > 0 ? validated : null;
-}
-
-async function generateAllAreaRecsAndProjections(responses) {
-  const results = await Promise.allSettled(
-    Object.keys(AREAS).map(aName =>
-      generateSingleAreaRecsAndProjections(aName, responses).then(result => ({ aName, result }))
-    )
-  );
-
-  const combined = {};
-  results.forEach(r => {
-    if (r.status === "fulfilled" && r.value?.result) {
-      combined[r.value.aName] = r.value.result;
-    } else if (r.status === "rejected") {
-      console.error("Recs+projections failed for area:", r.reason?.message || r.reason);
-    }
-  });
-  return Object.keys(combined).length > 0 ? combined : null;
-}
-
-// Extract projected scores from combined result for radar chart use
-function extractProjectedScores(areaRecsAndProjections) {
-  if (!areaRecsAndProjections) return null;
-  const projections = {};
-  Object.entries(areaRecsAndProjections).forEach(([aName, topicData]) => {
-    const topicProjections = {};
-    Object.entries(topicData).forEach(([topicName, data]) => {
-      if (data?.projected !== null && data?.projected !== undefined) {
-        topicProjections[topicName] = data.projected;
-      }
-    });
-    if (Object.keys(topicProjections).length > 0) projections[aName] = topicProjections;
-  });
-  return Object.keys(projections).length > 0 ? projections : null;
-}
-
 // ─── Area Summaries Generator ─────────────────────────────────────────────────
 async function generateSingleAreaSummary(aName, responses) {
   const area = AREAS[aName];
@@ -1860,96 +1299,6 @@ Write the narrative with these guidelines:
   return data.content.map(c => c.text || "").join("").trim();
 }
 
-async function generateRecommendations(user, responses) {
-  const stats = getStats(responses);
-
-  // Build a focused evidence dossier.
-  // Goals scoring < 3.0 get full detail (text + assessor comment + AI rationale) — these are the primary action candidates.
-  // Goals scoring >= 3.0 get score + text only, so the model has context without bloating the prompt.
-  const evidenceDossier = Object.entries(AREAS).map(([aName, area]) => {
-    const topicBlocks = area.topics.map((topic, tIdx) => {
-      const goalLines = topic.goals.map((goalText, gIdx) => {
-        const r = responses[rKey(aName, tIdx, "goal", gIdx)];
-        if (!r?.score) return null;
-        const needsDetail = r.score < 3.0;
-        const lines = [`    [G${gIdx + 1}] Score ${r.score}/5 — ${goalText}`];
-        if (needsDetail && r.comment)   lines.push(`      Assessor comment: "${r.comment}"`);
-        if (needsDetail && r.rationale) lines.push(`      AI rationale: ${r.rationale}`);
-        return lines.join("\n");
-      }).filter(Boolean);
-
-      if (goalLines.length === 0) return null;
-      const avgScores = topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean);
-      const topicAvg = avgScores.length > 0 ? (avgScores.reduce((a, b) => a + b, 0) / avgScores.length).toFixed(1) : "—";
-      return `  Topic: ${topic.name} (avg ${topicAvg}/5)\n${goalLines.join("\n")}`;
-    }).filter(Boolean);
-
-    if (topicBlocks.length === 0) return null;
-    const areaScores = area.topics.flatMap((topic, tIdx) =>
-      topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean)
-    );
-    const areaAvg = areaScores.length > 0 ? (areaScores.reduce((a, b) => a + b, 0) / areaScores.length).toFixed(1) : "—";
-    return `AREA: ${aName} (overall avg ${areaAvg}/5)\n${topicBlocks.join("\n\n")}`;
-  }).filter(Boolean).join("\n\n---\n\n");
-
-  const response = await fetch("/api/ai", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 4000,
-      messages: [{
-        role: "user",
-        content: `You are a senior data governance consultant at NTT DATA preparing the Prioritized Action Plan section of a formal CMMI DMM assessment report for a client.
-
-Organization: ${user.org}
-Overall Maturity Score: ${stats.avg ? stats.avg.toFixed(1) : "N/A"}/5.0
-
-Below is the complete assessment evidence — every scored goal, with the assessor's verbatim commentary captured during interview workshops and the AI scoring rationale. This is your ONLY source of truth. Do not invent capabilities, tools, systems, roles, or pain points that are not explicitly named or implied in the evidence.
-
-ASSESSMENT EVIDENCE:
-${evidenceDossier}
-
-YOUR TASK:
-Identify 6–8 high-priority action items grounded entirely in the evidence above. Each action item must:
-
-1. TARGET a specific, named gap or pain point drawn directly from assessor commentary — use the language participants used (e.g. if the assessor wrote "Collibra covers only 60% of assets", reference Collibra and the coverage gap explicitly — not a generic "metadata repository")
-2. CITE the source goals using the area, topic, and [G#] references
-3. DESCRIBE a concrete action naming the specific systems, processes, roles, or workstreams mentioned in the evidence
-4. JUSTIFY effort and value scores using the evidence (e.g. lower effort if infrastructure partially exists; higher value if commentary references regulatory obligations, executive reporting, or strategic programs)
-5. EXPRESS business value in terms of outcomes the participants named (e.g. BCBS 239 compliance, CDO reporting, audit readiness, cloud migration — whatever was actually said)
-
-EFFORT/VALUE CALIBRATION RULES:
-- Spread scores meaningfully across the 1–5 scale so the payoff matrix is discriminating and useful
-- Do not cluster everything at high value — be realistic and selective
-- If a partial capability already exists per the commentary, effort should reflect that head start
-- Quick Wins must be genuinely achievable within 1–3 months given what exists today
-- Strategic Investments are high-value but require significant build, change management, or cross-team coordination
-
-Use American English spelling throughout.
-
-Respond ONLY with a valid JSON array — no preamble, no markdown fences, no explanation outside the JSON. Each object must have exactly these fields:
-- "title": concise action title using org-specific language from the evidence (max 10 words)
-- "area": the CMMI DMM area this primarily addresses
-- "topic": the specific topic within that area
-- "source_goals": array of strings, e.g. ["Data Governance > Business Glossary > G3", "Data Quality > DQ Assessment > G1"]
-- "description": 2–3 sentences describing the specific action, naming tools, processes, and roles from the evidence
-- "evidence": 1 sentence quoting or closely paraphrasing the specific assessor comment or finding that motivates this action
-- "business_value": 1–2 sentences on the tangible outcome, using terminology from the evidence
-- "effort": integer 1–5 (1=very low, 5=very high)
-- "value": integer 1–5 (1=low, 5=very high)`
-      }]
-    })
-  });
-
-  const data = await response.json();
-  if (data.error) throw new Error(`Anthropic error: ${data.error.message || JSON.stringify(data.error)}`);
-  if (!data.content) throw new Error(`Unexpected response: ${JSON.stringify(data)}`);
-  const raw = data.content.map(c => c.text || "").join("").trim();
-  const clean = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
-  return JSON.parse(clean);
-}
-
 // ─── Print Helpers ────────────────────────────────────────────────────────────
 function dateStamp() {
   const d = new Date();
@@ -1982,101 +1331,20 @@ function openPrintWindow(html, title) {
 function printReport(html) { openPrintWindow(html, `${dateStamp()}_NTT_DATA_Assessment`); }
 
 // Standalone recommendations PDF — simple flat HTML, no complex layout
-function printRecsOnly(recs, user) {
-  if (!recs || !recs.length) return;
-  const priorityColor = (effort, value) => {
-    if (value >= 3 && effort <= 3) return { color: "#068941", bg: "#E0F5EC", label: "Quick Win" };
-    if (value >= 3 && effort > 3)  return { color: "#0072BC", bg: "#DAEEF9", label: "Strategic Investment" };
-    if (value < 3  && effort <= 3) return { color: "#CC7700", bg: "#FFF5CC", label: "Fill-in" };
-    return { color: "#94a3b8", bg: "#f8fafc", label: "Deprioritize" };
-  };
-  const effortLabel = e => ["","Low","Low-Med","Medium","Med-High","High"][e] || "Medium";
-  const valueLabel  = v => ["","Low","Low-Med","Medium","Med-High","High"][v] || "Medium";
-  const date = new Date().toLocaleDateString("en-US", { year:"numeric", month:"long", day:"numeric" });
 
-  const cards = recs.map((r, i) => {
-    const p = priorityColor(r.effort, r.value);
-    const sourceGoalsHTML = r.source_goals?.length
-      ? `<div style="margin-bottom:8px;display:flex;flex-wrap:wrap;gap:4px;">${r.source_goals.map(g =>
-          `<span style="font-size:9px;color:${p.color};background:${p.bg};border:1px solid ${p.color}30;padding:1px 7px;font-family:'Outfit',sans-serif;font-weight:600;">${g}</span>`
-        ).join("")}</div>`
-      : "";
-    const evidenceHTML = r.evidence
-      ? `<div style="background:${p.bg};border-left:3px solid ${p.color};padding:7px 10px;margin-bottom:8px;">
-          <div style="font-size:9px;font-weight:700;color:${p.color};letter-spacing:1px;margin-bottom:2px;font-family:'Outfit',sans-serif;">ASSESSMENT EVIDENCE</div>
-          <div style="font-size:11px;color:#334155;line-height:1.5;font-style:italic;font-family:'Outfit',sans-serif;">"${r.evidence}"</div>
-        </div>`
-      : "";
-    return `<div style="margin:0 0 12px;padding:14px 16px;border-left:4px solid ${p.color};border-top:1px solid #e2e8f0;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;background:#fafafa;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
-        <div style="display:flex;gap:8px;align-items:flex-start;flex:1;">
-          <span style="background:${p.color};color:white;font-size:10px;font-weight:700;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'Outfit',sans-serif;">${i+1}</span>
-          <div>
-            <div style="font-size:13px;font-weight:700;color:#0f172a;font-family:'Outfit',sans-serif;">${r.title}</div>
-            <div style="font-size:10px;color:#94a3b8;font-family:'Outfit',sans-serif;">${r.area}${r.topic ? " &rsaquo; " + r.topic : ""}</div>
-          </div>
-        </div>
-        <span style="background:${p.bg};color:${p.color};font-size:10px;font-weight:700;padding:2px 8px;white-space:nowrap;font-family:'Outfit',sans-serif;">${p.label}</span>
-      </div>
-      ${sourceGoalsHTML}
-      <p style="margin:0 0 8px;font-size:11.5px;color:#334155;line-height:1.6;font-family:'Outfit',sans-serif;">${r.description}</p>
-      ${evidenceHTML}
-      <div style="background:white;padding:7px 10px;border:1px solid #e2e8f0;margin-bottom:8px;">
-        <div style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:1px;margin-bottom:2px;font-family:'Outfit',sans-serif;">BUSINESS VALUE</div>
-        <div style="font-size:11px;color:#334155;line-height:1.5;font-family:'Outfit',sans-serif;">${r.business_value}</div>
-      </div>
-      <div style="font-size:10px;color:#64748b;font-family:'Outfit',sans-serif;">Effort: <strong>${effortLabel(r.effort)}</strong> &nbsp;&nbsp; Value: <strong>${valueLabel(r.value)}</strong></div>
-    </div>`;
-  }).join("");
-
-  const matrixSVG = payoffMatrixSVG(recs, 460);
-  const legendHTML = [
-    ["#068941","#E0F5EC","Quick Win"],
-    ["#0072BC","#DAEEF9","Strategic Investment"],
-    ["#CC7700","#FFF5CC","Fill-in"],
-    ["#94a3b8","#f1f5f9","Deprioritize"]
-  ].map(([c,bg,l]) =>
-    `<div style="display:inline-flex;align-items:center;gap:5px;background:${bg};padding:3px 9px;margin:2px;">
-      <span style="width:9px;height:9px;background:${c};display:inline-block;flex-shrink:0;"></span>
-      <span style="font-size:10px;font-weight:700;color:${c};font-family:'Outfit',sans-serif;">${l}</span>
-    </div>`
-  ).join("");
-
-  const html = `
-    <div style="padding:48px 52px 24px;font-family:'Outfit',sans-serif;">
-      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #e2e8f0;padding-bottom:16px;margin-bottom:28px;">
-        <div style="font-size:11px;font-weight:700;color:#0072BC;letter-spacing:1px;">NTT DATA</div>
-        <div style="font-size:10px;color:#94a3b8;letter-spacing:1.5px;font-weight:700;">CMMI DMM ASSESSMENT REPORT</div>
-      </div>
-      <div style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:2px;margin-bottom:4px;">RECOMMENDATIONS</div>
-      <div style="font-size:26px;font-weight:700;color:#0f172a;margin-bottom:4px;">Prioritized Action Plan</div>
-      <div style="font-size:12px;color:#64748b;margin-bottom:20px;">${user.org} &nbsp;·&nbsp; ${date}</div>
-      <div style="padding:18px 20px;background:#f8fafc;border:1px solid #e2e8f0;margin-bottom:24px;">
-        <div style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin-bottom:12px;font-family:'Outfit',sans-serif;">VALUE vs. EFFORT PAYOFF MATRIX</div>
-        <div style="display:flex;justify-content:center;">${matrixSVG}</div>
-        <div style="display:flex;flex-wrap:wrap;justify-content:center;margin-top:10px;">${legendHTML}</div>
-      </div>
-      ${cards}
-    </div>`;
-
-  openPrintWindow(html, `${dateStamp()}_NTT_DATA_Action_Plan`);
-}
-
-function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, cachedAreaSummaries, cachedAreaRecsAndProjections, onSummaryGenerated, onRecsGenerated, onAreaSummariesGenerated, onAreaRecsAndProjectionsGenerated }) {
+function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSummaries, cachedAreaRecsAndProjections, onSummaryGenerated, onAreaSummariesGenerated, onAreaRecsAndProjectionsGenerated }) {
   const [status, setStatus] = useState("generating");
   const [errorMsg, setErrorMsg] = useState("");
   const [aiError, setAiError] = useState("");
-  const [includeRecs, setIncludeRecs] = useState(true);
   const [html, setHtml] = useState("");
   const summaryRef         = useRef(null);
-  const recsRef            = useRef(null);
   const areaSummariesRef   = useRef(null);
   const areaRecsAndProjectionsRef = useRef(null);
 
-  const rebuild = (summary, recs, withRecs, areaSummaries, areaRecsAndProjections) => {
+  const rebuild = (summary, areaSummaries, areaRecsAndProjections) => {
     try {
       const projectedScores = extractProjectedScores(areaRecsAndProjections);
-      setHtml(buildReportHTML(user, responses, summary, withRecs ? recs : null, areaSummaries, projectedScores, areaRecsAndProjections));
+      setHtml(buildReportHTML(user, responses, summary, areaSummaries, projectedScores, areaRecsAndProjections));
     } catch (e) {
       console.error("buildReportHTML failed:", e);
       setErrorMsg(e.message || String(e));
@@ -2094,14 +1362,13 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, ca
     }
 
     // If all four cached values exist, skip all API calls
-    if (cachedSummary && cachedRecs && cachedAreaSummaries && cachedAreaRecsAndProjections) {
+    if (cachedSummary && cachedAreaSummaries && cachedAreaRecsAndProjections) {
       summaryRef.current                = cachedSummary;
-      recsRef.current                   = cachedRecs;
       areaSummariesRef.current          = cachedAreaSummaries;
       areaRecsAndProjectionsRef.current = cachedAreaRecsAndProjections;
       try {
         const projectedScores = extractProjectedScores(cachedAreaRecsAndProjections);
-        setHtml(buildReportHTML(user, responses, cachedSummary, null, cachedAreaSummaries, projectedScores, cachedAreaRecsAndProjections));
+        setHtml(buildReportHTML(user, responses, cachedSummary, cachedAreaSummaries, projectedScores, cachedAreaRecsAndProjections));
         setStatus("ready");
       } catch (e) {
         setErrorMsg(e.message || String(e));
@@ -2111,34 +1378,30 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, ca
     }
 
     const summaryCall      = cachedSummary                ? Promise.resolve(cachedSummary)                : generateAISummary(user, responses);
-    const recsCall         = cachedRecs                   ? Promise.resolve(cachedRecs)                   : generateRecommendations(user, responses);
     const areaSummaryCall  = cachedAreaSummaries          ? Promise.resolve(cachedAreaSummaries)          : generateAreaSummaries(responses);
     const recsProjectCall  = cachedAreaRecsAndProjections ? Promise.resolve(cachedAreaRecsAndProjections) : generateAllAreaRecsAndProjections(responses);
 
-    Promise.allSettled([summaryCall, recsCall, areaSummaryCall, recsProjectCall]).then(([sRes, rRes, asRes, rpRes]) => {
+    Promise.allSettled([summaryCall, areaSummaryCall, recsProjectCall]).then(([sRes, rRes, asRes, rpRes]) => {
       const summary                = (sRes.status  === "fulfilled" && sRes.value)  ? sRes.value  : null;
       const recs                   = (rRes.status  === "fulfilled" && rRes.value)  ? rRes.value  : null;
       const areaSummaries          = (asRes.status === "fulfilled" && asRes.value) ? asRes.value : null;
       const areaRecsAndProjections = (rpRes.status === "fulfilled" && rpRes.value) ? rpRes.value : null;
 
       if (sRes.status  === "rejected") { console.error("AI summary error:",        sRes.reason?.message  || sRes.reason); setAiError(`Summary failed: ${sRes.reason?.message || "unknown"}`); }
-      if (rRes.status  === "rejected") { console.error("AI recs error:", rRes.reason?.message || rRes.reason); setAiError(`Action Plan failed: ${rRes.reason?.message || String(rRes.reason)}`); }
       if (asRes.status === "rejected") console.error("AI area summaries error:",   asRes.reason?.message || asRes.reason);
       if (rpRes.status === "rejected") console.error("AI recs+projections error:", rpRes.reason?.message || rpRes.reason);
 
       summaryRef.current                = summary;
-      recsRef.current                   = recs;
       areaSummariesRef.current          = areaSummaries;
       areaRecsAndProjectionsRef.current = areaRecsAndProjections;
 
       if (summary                && !cachedSummary                && onSummaryGenerated)                onSummaryGenerated(summary);
-      if (recs                   && !cachedRecs                   && onRecsGenerated)                   onRecsGenerated(recs);
       if (areaSummaries          && !cachedAreaSummaries          && onAreaSummariesGenerated)          onAreaSummariesGenerated(areaSummaries);
       if (areaRecsAndProjections && !cachedAreaRecsAndProjections && onAreaRecsAndProjectionsGenerated) onAreaRecsAndProjectionsGenerated(areaRecsAndProjections);
 
       try {
         const projectedScores = extractProjectedScores(areaRecsAndProjections);
-        setHtml(buildReportHTML(user, responses, summary, null, areaSummaries, projectedScores, areaRecsAndProjections));
+        setHtml(buildReportHTML(user, responses, summary, areaSummaries, projectedScores, areaRecsAndProjections));
         setStatus("ready");
       } catch (e) {
         console.error("buildReportHTML (with AI) failed:", e);
@@ -2156,7 +1419,7 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, ca
 
   const handleToggle = (val) => {
     setIncludeRecs(val);
-    if (status === "ready") rebuild(summaryRef.current, null, false, areaSummariesRef.current, areaRecsAndProjectionsRef.current);
+    if (status === "ready") rebuild(summaryRef.current, areaSummariesRef.current, areaRecsAndProjectionsRef.current);
   };
 
   // ── Error screen ─────────────────────────────────────────────────────────────
@@ -2229,14 +1492,7 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, ca
           >
             🖨 Print Assessment
           </button>
-          <button
-            onClick={() => printRecsOnly(recsRef.current, user)}
-            disabled={status !== "ready" || !recsRef.current}
-            title="Export just the Prioritized Action Plan as a standalone PDF"
-            style={{ display: "flex", alignItems: "center", gap: 8, background: status !== "ready" || !recsRef.current ? "rgba(6,137,65,.3)" : "linear-gradient(135deg,#068941,#00a86b)", border: "none", borderRadius: 9, padding: "9px 20px", color: "white", fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: status !== "ready" || !recsRef.current ? "not-allowed" : "pointer", opacity: status !== "ready" || !recsRef.current ? 0.5 : 1, whiteSpace: "nowrap" }}
-          >
-            📋 Print Action Plan
-          </button>
+
           <button
             onClick={onClose}
             style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 9, padding: "9px 16px", color: "rgba(255,255,255,.6)", fontSize: 13, fontFamily: "inherit", cursor: "pointer" }}
@@ -2660,7 +1916,6 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
   const [showReport, setShowReport] = useState(false);
   const [topicRecs, setTopicRecs] = useState(null);
   const [reportSummary, setReportSummary] = useState(null);
-  const [reportRecs, setReportRecs] = useState(null);
   const [reportAreaSummaries, setReportAreaSummaries] = useState(null);
   const [reportAreaRecsAndProjections, setReportAreaRecsAndProjections] = useState(null);
 
@@ -2679,7 +1934,6 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
   useEffect(() => {
     (async () => {
       try { const s = await window.storage.get("dmm_report_summary");          if (s?.value) setReportSummary(s.value); } catch (e) {}
-      try { const r = await window.storage.get("dmm_report_recs");             if (r?.value) { const p = JSON.parse(r.value); if (Array.isArray(p)) setReportRecs(p); } } catch (e) {}
       try { const a = await window.storage.get("dmm_report_area_summaries");   if (a?.value) { const p = JSON.parse(a.value); if (p && typeof p === "object") setReportAreaSummaries(p); } } catch (e) {}
       try { const j = await window.storage.get("dmm_report_area_recs_proj");   if (j?.value) { const p = JSON.parse(j.value); if (p && typeof p === "object") setReportAreaRecsAndProjections(p); } } catch (e) {}
     })();
@@ -2777,16 +2031,11 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
           responses={responses}
           onClose={() => setShowReport(false)}
           cachedSummary={reportSummary}
-          cachedRecs={reportRecs}
           cachedAreaSummaries={reportAreaSummaries}
           cachedAreaRecsAndProjections={reportAreaRecsAndProjections}
           onSummaryGenerated={s => {
             setReportSummary(s);
             try { window.storage.set("dmm_report_summary", s); } catch (e) {}
-          }}
-          onRecsGenerated={r => {
-            setReportRecs(r);
-            try { window.storage.set("dmm_report_recs", JSON.stringify(r)); } catch (e) {}
           }}
           onAreaSummariesGenerated={a => {
             setReportAreaSummaries(a);
@@ -2837,7 +2086,6 @@ export default function App() {
     // Invalidate all cached AI content so it reflects new scores
     try { await window.storage.delete("dmm_topic_recs"); } catch (e) {}
     try { await window.storage.delete("dmm_report_summary"); } catch (e) {}
-    try { await window.storage.delete("dmm_report_recs"); } catch (e) {}
     try { await window.storage.delete("dmm_report_area_summaries"); } catch (e) {}
     try { await window.storage.delete("dmm_report_area_recs_proj"); } catch (e) {}
     // Also clear in-memory recs in MainApp
