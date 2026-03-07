@@ -1314,7 +1314,7 @@ function recommendationsSectionHTML(recs) {
 }
 
 // ─── PDF Report Builder ───────────────────────────────────────────────────────
-function buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projectedScores = null) {
+function buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projectedScores = null, areaRecsAndProjections = null) {
   return Object.entries(AREAS).map(([aName, area]) => {
     const as_ = stats.areaStats[aName];
     const areaAvg = as_.avg;
@@ -1336,8 +1336,25 @@ function buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projecte
         ? (areaNarratives[topic.name] || areaNarratives[Object.keys(areaNarratives).find(k => k.toLowerCase().includes(topic.name.toLowerCase().slice(0,6))) || ""] || null)
         : null;
 
-      return `<div style="margin-bottom:20px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding-bottom:6px;border-bottom:1.5px solid ${area.color}20;">
+      // Resolve topic recs from combined areaRecsAndProjections
+      const areaTopicRecs = areaRecsAndProjections ? (areaRecsAndProjections[aName] || null) : null;
+      const topicRecData = areaTopicRecs
+        ? (areaTopicRecs[topic.name] || areaTopicRecs[Object.keys(areaTopicRecs).find(k => k.toLowerCase().includes(topic.name.toLowerCase().slice(0, 6))) || ""] || null)
+        : null;
+      const recBullets = topicRecData?.recs?.length > 0
+        ? `<div style="margin-top:14px;padding-top:12px;border-top:1px solid ${area.color}18;">
+            <p style="font-size:9.5px;font-weight:700;color:#94a3b8;letter-spacing:1.4px;margin:0 0 8px;font-family:'Outfit',sans-serif;text-transform:uppercase;">Recommendations</p>
+            <ul style="margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:7px;">
+              ${topicRecData.recs.map(r => `<li style="display:flex;align-items:flex-start;gap:9px;font-size:12.5px;color:#334155;line-height:1.65;font-family:'Outfit',sans-serif;">
+                <span style="width:18px;height:18px;border-radius:50%;background:${area.color}18;border:1.5px solid ${area.color}40;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:${area.color};flex-shrink:0;margin-top:1px;">→</span>
+                <span>${r}</span>
+              </li>`).join("")}
+            </ul>
+          </div>`
+        : "";
+
+      return `<div style="margin-bottom:24px;padding-bottom:24px;border-bottom:1px solid #f1f5f9;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-bottom:8px;border-bottom:1.5px solid ${area.color}20;">
           <span style="font-size:13px;font-weight:700;color:#0f172a;font-family:'Outfit',sans-serif;">${topic.name}</span>
           ${badge(topicAvg)}
         </div>
@@ -1345,6 +1362,7 @@ function buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projecte
           ? `<p style="margin:0;font-size:13px;color:#334155;line-height:1.75;font-family:'Outfit',sans-serif;">${narrative}</p>`
           : `<p style="margin:0;font-size:12px;color:#94a3b8;font-style:italic;font-family:'Outfit',sans-serif;">AI narrative pending — click Generate in the report overlay to populate.</p>`
         }
+        ${recBullets}
       </div>`;
     }).join("");
 
@@ -1386,7 +1404,7 @@ function buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projecte
   }).join("");
 }
 
-function buildReportHTML(user, responses, aiSummary = null, recommendations = null, areaSummaries = null, projectedScores = null) {
+function buildReportHTML(user, responses, aiSummary = null, recommendations = null, areaSummaries = null, projectedScores = null, areaRecsAndProjections = null) {
   const stats = getStats(responses);
   const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   const overallLevel = stats.avg ? Math.min(5, Math.max(1, Math.round(stats.avg))) : null;
@@ -1426,7 +1444,7 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
     </tr>`;
   }).join("");
 
-  const areaDetailPages = buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projectedScores);
+  const areaDetailPages = buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projectedScores, areaRecsAndProjections);
 
   return `
     <style>
@@ -1543,8 +1561,11 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
   `;
 }
 
-// ─── Projected Scores Generator ───────────────────────────────────────────────
-async function generateSingleAreaProjection(aName, responses) {
+// ─── Recs + Projections Generator ────────────────────────────────────────────
+// Single combined call per area: produces per-topic bullet recommendations AND
+// projected scores in one pass so projections are grounded in the actual recs.
+
+async function generateSingleAreaRecsAndProjections(aName, responses) {
   const area = AREAS[aName];
 
   const topicBlocks = area.topics.map((topic, tIdx) => {
@@ -1555,13 +1576,13 @@ async function generateSingleAreaProjection(aName, responses) {
     const goalLines = topic.goals.map((goalText, gIdx) => {
       const r = responses[rKey(aName, tIdx, "goal", gIdx)];
       if (!r?.score) return null;
-      const lines = [`    Goal ${gIdx + 1} (${r.score}/5): ${goalText}`];
-      if (r.comment)   lines.push(`      Current state: ${r.comment}`);
-      if (r.rationale) lines.push(`      Rationale: ${r.rationale}`);
+      const lines = [`    Goal ${gIdx + 1} (Score ${r.score}/5): ${goalText}`];
+      if (r.comment)   lines.push(`      Assessor notes: ${r.comment}`);
+      if (r.rationale) lines.push(`      AI rationale: ${r.rationale}`);
       return lines.join("\n");
     }).filter(Boolean);
 
-    return `  Topic: ${topic.name} (current avg ${avg}/5)\n${goalLines.join("\n")}`;
+    return `Topic: ${topic.name} (current avg ${avg}/5)\n${goalLines.join("\n")}`;
   }).filter(Boolean);
 
   if (topicBlocks.length === 0) return null;
@@ -1571,25 +1592,40 @@ async function generateSingleAreaProjection(aName, responses) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 800,
+      max_tokens: 2000,
       messages: [{
         role: "user",
-        content: `You are a senior CMMI DMM assessor estimating realistic maturity improvements for a client report.
+        content: `You are a senior CMMI DMM data governance consultant at NTT DATA authoring a formal client assessment report.
 
-For each topic below, estimate the projected maturity score (on the 1.0–5.0 CMMI scale) achievable if targeted recommendations are implemented. Apply these rules strictly:
+For each topic in the area below, produce:
+1. Three to four specific, actionable recommendations grounded directly in the assessment evidence — the scores, assessor notes, and rationales. Each recommendation must:
+   - Address a concrete gap or weakness identified in the evidence
+   - Name the specific capability, process, or artefact to build or fix
+   - Be achievable within a realistic programme of work (not aspirational boilerplate)
+   - Read as a clear directive a data governance practitioner can act on
+   Do NOT write generic recommendations (e.g. "establish data governance policies"). Every recommendation must be traceable to the evidence provided.
 
-RULES:
-- Be conservative. A single round of improvements typically advances a topic by 0.3–0.8 points, rarely more than 1.0
-- Never project above 5.0 or below the current score
-- Base projections only on the evidence in the comments and rationales — do not assume capabilities not described
-- If the current score is already ≥ 4.0, cap projected improvement at 0.3 unless there is clear evidence of near-readiness for the next level
-- If a topic has no scored goals, omit it from the response
+2. A projected maturity score (1.0–5.0 CMMI scale) achievable after implementing these specific recommendations. Rules:
+   - Conservative: typical improvement is 0.3–0.8 points per improvement cycle
+   - Never project above 5.0 or below the current score
+   - If current score ≥ 4.0, cap projected improvement at 0.3 unless evidence clearly indicates near-readiness for next level
+   - The projected score must be consistent with the ambition of the recommendations you wrote
 
-AREA: ${aName}
+ASSESSMENT AREA: ${aName}
+
 ${topicBlocks.join("\n\n")}
 
-Return ONLY a valid JSON object mapping topic name to projected score (a number). No preamble, no markdown:
-{ "Topic Name": 2.8 }`
+Return ONLY a valid JSON object. No preamble, no markdown fences, no explanation:
+{
+  "Exact Topic Name": {
+    "recs": [
+      "Specific recommendation 1",
+      "Specific recommendation 2",
+      "Specific recommendation 3"
+    ],
+    "projected": 2.8
+  }
+}`
       }]
     })
   });
@@ -1599,31 +1635,50 @@ Return ONLY a valid JSON object mapping topic name to projected score (a number)
   const raw = data.content.map(c => c.text || "").join("").trim();
   const clean = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
   const parsed = JSON.parse(clean);
-  // Validate: ensure all values are numbers within range
+
   const validated = {};
-  Object.entries(parsed).forEach(([k, v]) => {
-    const n = parseFloat(v);
-    if (!isNaN(n) && n >= 1.0 && n <= 5.0) validated[k] = Math.round(n * 10) / 10;
+  Object.entries(parsed).forEach(([topicName, val]) => {
+    if (!val || !Array.isArray(val.recs)) return;
+    const n = parseFloat(val.projected);
+    validated[topicName] = {
+      recs: val.recs.filter(r => typeof r === "string" && r.trim().length > 0),
+      projected: !isNaN(n) && n >= 1.0 && n <= 5.0 ? Math.round(n * 10) / 10 : null,
+    };
   });
   return Object.keys(validated).length > 0 ? validated : null;
 }
 
-async function generateProjectedScores(responses) {
+async function generateAllAreaRecsAndProjections(responses) {
   const results = await Promise.allSettled(
     Object.keys(AREAS).map(aName =>
-      generateSingleAreaProjection(aName, responses).then(result => ({ aName, result }))
+      generateSingleAreaRecsAndProjections(aName, responses).then(result => ({ aName, result }))
     )
   );
 
-  const projections = {};
+  const combined = {};
   results.forEach(r => {
     if (r.status === "fulfilled" && r.value?.result) {
-      projections[r.value.aName] = r.value.result;
+      combined[r.value.aName] = r.value.result;
     } else if (r.status === "rejected") {
-      console.error("Projection failed for area:", r.reason?.message || r.reason);
+      console.error("Recs+projections failed for area:", r.reason?.message || r.reason);
     }
   });
+  return Object.keys(combined).length > 0 ? combined : null;
+}
 
+// Extract projected scores from combined result for radar chart use
+function extractProjectedScores(areaRecsAndProjections) {
+  if (!areaRecsAndProjections) return null;
+  const projections = {};
+  Object.entries(areaRecsAndProjections).forEach(([aName, topicData]) => {
+    const topicProjections = {};
+    Object.entries(topicData).forEach(([topicName, data]) => {
+      if (data?.projected !== null && data?.projected !== undefined) {
+        topicProjections[topicName] = data.projected;
+      }
+    });
+    if (Object.keys(topicProjections).length > 0) projections[aName] = topicProjections;
+  });
   return Object.keys(projections).length > 0 ? projections : null;
 }
 
@@ -1899,7 +1954,7 @@ function printRecsOnly(recs, user) {
   openPrintWindow(html, `${dateStamp()}_NTT_DATA_Action_Plan`);
 }
 
-function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, cachedAreaSummaries, cachedProjectedScores, onSummaryGenerated, onRecsGenerated, onAreaSummariesGenerated, onProjectedScoresGenerated }) {
+function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, cachedAreaSummaries, cachedAreaRecsAndProjections, onSummaryGenerated, onRecsGenerated, onAreaSummariesGenerated, onAreaRecsAndProjectionsGenerated }) {
   const [status, setStatus] = useState("generating");
   const [errorMsg, setErrorMsg] = useState("");
   const [aiError, setAiError] = useState("");
@@ -1908,11 +1963,12 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, ca
   const summaryRef         = useRef(null);
   const recsRef            = useRef(null);
   const areaSummariesRef   = useRef(null);
-  const projectedScoresRef = useRef(null);
+  const areaRecsAndProjectionsRef = useRef(null);
 
-  const rebuild = (summary, recs, withRecs, areaSummaries, projectedScores) => {
+  const rebuild = (summary, recs, withRecs, areaSummaries, areaRecsAndProjections) => {
     try {
-      setHtml(buildReportHTML(user, responses, summary, withRecs ? recs : null, areaSummaries, projectedScores));
+      const projectedScores = extractProjectedScores(areaRecsAndProjections);
+      setHtml(buildReportHTML(user, responses, summary, withRecs ? recs : null, areaSummaries, projectedScores, areaRecsAndProjections));
     } catch (e) {
       console.error("buildReportHTML failed:", e);
       setErrorMsg(e.message || String(e));
@@ -1930,13 +1986,14 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, ca
     }
 
     // If all four cached values exist, skip all API calls
-    if (cachedSummary && cachedRecs && cachedAreaSummaries && cachedProjectedScores) {
-      summaryRef.current         = cachedSummary;
-      recsRef.current            = cachedRecs;
-      areaSummariesRef.current   = cachedAreaSummaries;
-      projectedScoresRef.current = cachedProjectedScores;
+    if (cachedSummary && cachedRecs && cachedAreaSummaries && cachedAreaRecsAndProjections) {
+      summaryRef.current                = cachedSummary;
+      recsRef.current                   = cachedRecs;
+      areaSummariesRef.current          = cachedAreaSummaries;
+      areaRecsAndProjectionsRef.current = cachedAreaRecsAndProjections;
       try {
-        setHtml(buildReportHTML(user, responses, cachedSummary, null, cachedAreaSummaries, cachedProjectedScores));
+        const projectedScores = extractProjectedScores(cachedAreaRecsAndProjections);
+        setHtml(buildReportHTML(user, responses, cachedSummary, null, cachedAreaSummaries, projectedScores, cachedAreaRecsAndProjections));
         setStatus("ready");
       } catch (e) {
         setErrorMsg(e.message || String(e));
@@ -1945,34 +2002,35 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, ca
       return;
     }
 
-    const summaryCall      = cachedSummary          ? Promise.resolve(cachedSummary)          : generateAISummary(user, responses);
-    const recsCall         = cachedRecs              ? Promise.resolve(cachedRecs)              : generateRecommendations(user, responses);
-    const areaSummaryCall  = cachedAreaSummaries     ? Promise.resolve(cachedAreaSummaries)     : generateAreaSummaries(responses);
-    const projectionCall   = cachedProjectedScores   ? Promise.resolve(cachedProjectedScores)   : generateProjectedScores(responses);
+    const summaryCall      = cachedSummary                ? Promise.resolve(cachedSummary)                : generateAISummary(user, responses);
+    const recsCall         = cachedRecs                   ? Promise.resolve(cachedRecs)                   : generateRecommendations(user, responses);
+    const areaSummaryCall  = cachedAreaSummaries          ? Promise.resolve(cachedAreaSummaries)          : generateAreaSummaries(responses);
+    const recsProjectCall  = cachedAreaRecsAndProjections ? Promise.resolve(cachedAreaRecsAndProjections) : generateAllAreaRecsAndProjections(responses);
 
-    Promise.allSettled([summaryCall, recsCall, areaSummaryCall, projectionCall]).then(([sRes, rRes, asRes, pRes]) => {
-      const summary        = (sRes.status  === "fulfilled" && sRes.value)  ? sRes.value  : null;
-      const recs           = (rRes.status  === "fulfilled" && rRes.value)  ? rRes.value  : null;
-      const areaSummaries  = (asRes.status === "fulfilled" && asRes.value) ? asRes.value : null;
-      const projectedScores = (pRes.status === "fulfilled" && pRes.value)  ? pRes.value  : null;
+    Promise.allSettled([summaryCall, recsCall, areaSummaryCall, recsProjectCall]).then(([sRes, rRes, asRes, rpRes]) => {
+      const summary                = (sRes.status  === "fulfilled" && sRes.value)  ? sRes.value  : null;
+      const recs                   = (rRes.status  === "fulfilled" && rRes.value)  ? rRes.value  : null;
+      const areaSummaries          = (asRes.status === "fulfilled" && asRes.value) ? asRes.value : null;
+      const areaRecsAndProjections = (rpRes.status === "fulfilled" && rpRes.value) ? rpRes.value : null;
 
-      if (sRes.status  === "rejected") { console.error("AI summary error:",      sRes.reason?.message  || sRes.reason);  setAiError(`Summary failed: ${sRes.reason?.message || "unknown"}`); }
-      if (rRes.status  === "rejected") console.error("AI recs error:",           rRes.reason?.message  || rRes.reason);
-      if (asRes.status === "rejected") console.error("AI area summaries error:", asRes.reason?.message || asRes.reason);
-      if (pRes.status  === "rejected") console.error("AI projections error:",    pRes.reason?.message  || pRes.reason);
+      if (sRes.status  === "rejected") { console.error("AI summary error:",           sRes.reason?.message  || sRes.reason); setAiError(`Summary failed: ${sRes.reason?.message || "unknown"}`); }
+      if (rRes.status  === "rejected") console.error("AI recs error:",                rRes.reason?.message  || rRes.reason);
+      if (asRes.status === "rejected") console.error("AI area summaries error:",      asRes.reason?.message || asRes.reason);
+      if (rpRes.status === "rejected") console.error("AI recs+projections error:",    rpRes.reason?.message || rpRes.reason);
 
-      summaryRef.current         = summary;
-      recsRef.current            = recs;
-      areaSummariesRef.current   = areaSummaries;
-      projectedScoresRef.current = projectedScores;
+      summaryRef.current                = summary;
+      recsRef.current                   = recs;
+      areaSummariesRef.current          = areaSummaries;
+      areaRecsAndProjectionsRef.current = areaRecsAndProjections;
 
-      if (summary        && !cachedSummary         && onSummaryGenerated)         onSummaryGenerated(summary);
-      if (recs           && !cachedRecs            && onRecsGenerated)            onRecsGenerated(recs);
-      if (areaSummaries  && !cachedAreaSummaries   && onAreaSummariesGenerated)   onAreaSummariesGenerated(areaSummaries);
-      if (projectedScores && !cachedProjectedScores && onProjectedScoresGenerated) onProjectedScoresGenerated(projectedScores);
+      if (summary                && !cachedSummary                && onSummaryGenerated)                onSummaryGenerated(summary);
+      if (recs                   && !cachedRecs                   && onRecsGenerated)                   onRecsGenerated(recs);
+      if (areaSummaries          && !cachedAreaSummaries          && onAreaSummariesGenerated)          onAreaSummariesGenerated(areaSummaries);
+      if (areaRecsAndProjections && !cachedAreaRecsAndProjections && onAreaRecsAndProjectionsGenerated) onAreaRecsAndProjectionsGenerated(areaRecsAndProjections);
 
       try {
-        setHtml(buildReportHTML(user, responses, summary, null, areaSummaries, projectedScores));
+        const projectedScores = extractProjectedScores(areaRecsAndProjections);
+        setHtml(buildReportHTML(user, responses, summary, null, areaSummaries, projectedScores, areaRecsAndProjections));
         setStatus("ready");
       } catch (e) {
         console.error("buildReportHTML (with AI) failed:", e);
@@ -1990,7 +2048,7 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, ca
 
   const handleToggle = (val) => {
     setIncludeRecs(val);
-    if (status === "ready") rebuild(summaryRef.current, null, false, areaSummariesRef.current, projectedScoresRef.current);
+    if (status === "ready") rebuild(summaryRef.current, null, false, areaSummariesRef.current, areaRecsAndProjectionsRef.current);
   };
 
   // ── Error screen ─────────────────────────────────────────────────────────────
@@ -2169,7 +2227,44 @@ function Dashboard({ responses, onNavigate, user, onExport, topicRecs, onTopicRe
   const stats = getStats(responses);
   const overallLevel = stats.avg ? Math.round(stats.avg) : null;
   const overallCmmi = overallLevel ? CMMI[overallLevel] : null;
+  const [recsLoading, setRecsLoading] = useState(false);
+  const [recsError, setRecsError] = useState("");
 
+  // Load cached recs from storage on first mount (only if not already in parent state)
+  useEffect(() => {
+    if (topicRecs) return; // already have them in parent state
+    (async () => {
+      try {
+        const cached = await window.storage.get("dmm_topic_recs");
+        if (cached?.value) {
+          const parsed = JSON.parse(cached.value);
+          if (parsed && typeof parsed === "object") onTopicRecsChange(parsed);
+        }
+      } catch (e) {
+        // Key not found or parse error — stay in "not generated" state
+      }
+    })();
+  }, []);
+
+  const handleGenerateRecs = async () => {
+    setRecsLoading(true);
+    setRecsError("");
+    try {
+      const recs = await generateTopicRecs(responses);
+      onTopicRecsChange(recs);
+      // Cache to storage independently — a write failure shouldn't surface as a user error
+      try {
+        await window.storage.set("dmm_topic_recs", JSON.stringify(recs));
+      } catch (storageErr) {
+        console.warn("Could not cache recommendations to storage:", storageErr);
+      }
+    } catch (e) {
+      console.error("Topic recs error:", e);
+      setRecsError("Failed to generate recommendations. Please try again.");
+    } finally {
+      setRecsLoading(false);
+    }
+  };
 
   return (
     <div style={{ padding: "32px 36px", fontFamily: "'Outfit', sans-serif" }}>
@@ -2262,8 +2357,28 @@ function Dashboard({ responses, onNavigate, user, onExport, topicRecs, onTopicRe
       </div>
 
       {/* Area cards with embedded radar */}
-      <div style={{ marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: "#94A3B8", letterSpacing: 1.2 }}>ASSESSMENT AREAS</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {recsError && <span style={{ fontSize: 12, color: "#B22000" }}>{recsError}</span>}
+          {topicRecs && !recsLoading && (
+            <span style={{ fontSize: 11, color: "#94A3B8" }}>Recommendations cached</span>
+          )}
+          <button
+            onClick={handleGenerateRecs}
+            disabled={recsLoading || stats.scoredGoals === 0}
+            style={{ display: "flex", alignItems: "center", gap: 7, background: recsLoading ? "rgba(0,114,188,.4)" : "linear-gradient(135deg,#0072BC,#009AA4)", border: "none", borderRadius: 8, padding: "7px 14px", color: "white", fontSize: 12, fontWeight: 600, fontFamily: "inherit", cursor: recsLoading || stats.scoredGoals === 0 ? "not-allowed" : "pointer", opacity: stats.scoredGoals === 0 ? 0.4 : 1, whiteSpace: "nowrap", transition: "opacity .15s" }}
+          >
+            {recsLoading ? (
+              <>
+                <span style={{ width: 10, height: 10, border: "2px solid rgba(255,255,255,.3)", borderTop: "2px solid white", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite" }} />
+                Generating…
+              </>
+            ) : (
+              <>✦ {topicRecs ? "Refresh" : "Generate"} Recommendations</>
+            )}
+          </button>
+        </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14, animation: "fadeIn .6s ease" }}>
         {Object.entries(AREAS).map(([aName, area]) => {
@@ -2303,7 +2418,54 @@ function Dashboard({ responses, onNavigate, user, onExport, topicRecs, onTopicRe
               {/* Topic pills */}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 10 }}>
 
-
+              {/* Topic Recommendations */}
+              {(topicRecs || recsLoading) && (() => {
+                const priorityConfig = {
+                  high:   { color: "#B22000", bg: "#FDECEA" },
+                  medium: { color: "#CC7700", bg: "#FFF5CC" },
+                  low:    { color: "#068941", bg: "#E0F5EC" },
+                };
+                const areaRecs = topicRecs
+                  ? (topicRecs[aName] || topicRecs[Object.keys(topicRecs).find(k => k.toLowerCase().includes(aName.toLowerCase().slice(0, 6))) || ""] || {})
+                  : {};
+                return (
+                  <div style={{ width: "100%", marginTop: 14, marginBottom: 4, display: "flex", flexDirection: "column", gap: 5 }} onClick={e => e.stopPropagation()}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "#94A3B8", letterSpacing: 1.2, marginBottom: 2 }}>TOPIC RECOMMENDATIONS</div>
+                    {area.topics.map((topic, tIdx) => {
+                      const scored = topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean);
+                      const avg = scored.length > 0 ? scored.reduce((a, b) => a + b, 0) / scored.length : null;
+                      const topicRec = areaRecs[topic.name] || areaRecs[Object.keys(areaRecs).find(k => k.toLowerCase().includes(topic.name.toLowerCase().slice(0, 6))) || ""] || null;
+                      const priority = topicRec?.priority || (avg ? (avg < 1.8 ? "high" : avg < 2.5 ? "medium" : "low") : null);
+                      const pc = priority ? priorityConfig[priority] : null;
+                      return recsLoading ? (
+                        <div key={tIdx} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, background: "#F8FAFC", border: "1px solid #F1F5F9" }}>
+                          <div style={{ width: 28, height: 8, borderRadius: 4, background: "#E2E8F0", animation: "shimmer 1.4s ease infinite" }} />
+                          <div style={{ flex: 1, height: 8, borderRadius: 4, background: "#E2E8F0", animation: "shimmer 1.4s ease infinite", animationDelay: `${tIdx * 0.1}s` }} />
+                        </div>
+                      ) : (
+                        <div key={tIdx} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "7px 10px", borderRadius: 8, background: pc ? pc.bg + "66" : "#F8FAFC", border: `1px solid ${pc ? pc.color + "22" : "#F1F5F9"}` }}>
+                          {avg && (
+                            <span style={{ fontSize: 10, fontWeight: 700, color: pc?.color || "#94A3B8", background: "white", border: `1px solid ${pc?.color || "#E2E8F0"}44`, borderRadius: 4, padding: "1px 5px", whiteSpace: "nowrap", flexShrink: 0, marginTop: 1 }}>
+                              {avg.toFixed(1)}
+                            </span>
+                          )}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 10.5, fontWeight: 600, color: "#64748B", marginBottom: 1 }}>{topic.name}</div>
+                            <div style={{ fontSize: 11.5, color: "#334155", lineHeight: 1.45 }}>
+                              {topicRec?.rec || <span style={{ color: "#94A3B8", fontStyle: "italic" }}>No scores recorded</span>}
+                            </div>
+                          </div>
+                          {pc && priority && (
+                            <span style={{ fontSize: 9.5, fontWeight: 700, color: pc.color, background: "white", border: `1px solid ${pc.color}33`, borderRadius: 4, padding: "2px 6px", flexShrink: 0, marginTop: 1, textTransform: "capitalize" }}>
+                              {priority}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
                 {area.topics.map((t, i) => {
                   const scored = t.goals.filter((_, gIdx) => responses[rKey(aName, i, "goal", gIdx)]?.score).length;
                   const topicAvg = scored > 0
@@ -2496,7 +2658,7 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
   const [reportSummary, setReportSummary] = useState(null);
   const [reportRecs, setReportRecs] = useState(null);
   const [reportAreaSummaries, setReportAreaSummaries] = useState(null);
-  const [reportProjectedScores, setReportProjectedScores] = useState(null);
+  const [reportAreaRecsAndProjections, setReportAreaRecsAndProjections] = useState(null);
 
   // Expose a way for Root to clear all AI cache state when scores change
   useEffect(() => {
@@ -2505,7 +2667,7 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
       setReportSummary(null);
       setReportRecs(null);
       setReportAreaSummaries(null);
-      setReportProjectedScores(null);
+      setReportAreaRecsAndProjections(null);
     });
   }, []);
 
@@ -2515,7 +2677,7 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
       try { const s = await window.storage.get("dmm_report_summary");          if (s?.value) setReportSummary(s.value); } catch (e) {}
       try { const r = await window.storage.get("dmm_report_recs");             if (r?.value) { const p = JSON.parse(r.value); if (Array.isArray(p)) setReportRecs(p); } } catch (e) {}
       try { const a = await window.storage.get("dmm_report_area_summaries");   if (a?.value) { const p = JSON.parse(a.value); if (p && typeof p === "object") setReportAreaSummaries(p); } } catch (e) {}
-      try { const j = await window.storage.get("dmm_report_projections");      if (j?.value) { const p = JSON.parse(j.value); if (p && typeof p === "object") setReportProjectedScores(p); } } catch (e) {}
+      try { const j = await window.storage.get("dmm_report_area_recs_proj");   if (j?.value) { const p = JSON.parse(j.value); if (p && typeof p === "object") setReportAreaRecsAndProjections(p); } } catch (e) {}
     })();
   }, []);
   const stats = getStats(responses);
@@ -2613,7 +2775,7 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
           cachedSummary={reportSummary}
           cachedRecs={reportRecs}
           cachedAreaSummaries={reportAreaSummaries}
-          cachedProjectedScores={reportProjectedScores}
+          cachedAreaRecsAndProjections={reportAreaRecsAndProjections}
           onSummaryGenerated={s => {
             setReportSummary(s);
             try { window.storage.set("dmm_report_summary", s); } catch (e) {}
@@ -2626,9 +2788,9 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
             setReportAreaSummaries(a);
             try { window.storage.set("dmm_report_area_summaries", JSON.stringify(a)); } catch (e) {}
           }}
-          onProjectedScoresGenerated={p => {
-            setReportProjectedScores(p);
-            try { window.storage.set("dmm_report_projections", JSON.stringify(p)); } catch (e) {}
+          onAreaRecsAndProjectionsGenerated={p => {
+            setReportAreaRecsAndProjections(p);
+            try { window.storage.set("dmm_report_area_recs_proj", JSON.stringify(p)); } catch (e) {}
           }}
         />
       )}
@@ -2673,7 +2835,7 @@ export default function App() {
     try { await window.storage.delete("dmm_report_summary"); } catch (e) {}
     try { await window.storage.delete("dmm_report_recs"); } catch (e) {}
     try { await window.storage.delete("dmm_report_area_summaries"); } catch (e) {}
-    try { await window.storage.delete("dmm_report_projections"); } catch (e) {}
+    try { await window.storage.delete("dmm_report_area_recs_proj"); } catch (e) {}
     // Also clear in-memory recs in MainApp
     if (clearTopicRecsRef.current) clearTopicRecsRef.current();
   };
