@@ -1340,7 +1340,8 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
       @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Fraunces:wght@400;600;700&display=swap');
       * { box-sizing:border-box; }
       @media print {
-        @page { margin:14mm 12mm; size:A4; }
+        @page { margin:14mm 8mm 16mm; size:A4; }
+        @page { @bottom-center { content: "Page " counter(page) " of " counter(pages); font-family: 'Outfit', sans-serif; font-size: 9pt; color: #94a3b8; } }
         body { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
       }
     </style>
@@ -1638,7 +1639,7 @@ function openPrintWindow(html, title) {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Fraunces:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet"/>
 <style>
-  @media print { @page { margin:14mm 12mm; size:A4; } body { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; } }
+  @media print { @page { margin:14mm 8mm 16mm; size:A4; } @page { @bottom-center { content: "Page " counter(page) " of " counter(pages); font-family: 'Outfit', sans-serif; font-size: 9pt; color: #94a3b8; } } body { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; } }
   * { box-sizing:border-box; } body { margin:0; padding:0; background:white; font-family:'Outfit',sans-serif; }
 </style></head><body>${html}
 <script>window.addEventListener('load',function(){ setTimeout(function(){ window.print(); },2500); });<\/script>
