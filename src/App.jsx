@@ -1603,6 +1603,7 @@ For each topic in the area below, produce:
    - Be achievable within a realistic programme of work (not aspirational boilerplate)
    - Read as a clear directive a data governance practitioner can act on
    Do NOT write generic recommendations (e.g. "establish data governance policies"). Every recommendation must be traceable to the evidence provided.
+- Use American English spelling throughout (e.g., "program" not "programme", "prioritize" not "prioritise", "analyze" not "analyse").
 
 2. A projected maturity score (1.0–5.0 CMMI scale) achievable after implementing these specific recommendations. Rules:
    - Conservative: typical improvement is 0.3–0.8 points per improvement cycle
@@ -1718,6 +1719,7 @@ For each topic below, write a concise narrative paragraph (3–5 sentences) that
 - Identifies the key gap or risk
 - Uses professional language appropriate for an executive audience
 - Flowing prose only — no bullets, headers, or markdown
+- Use American English spelling throughout (e.g., "program" not "programme", "prioritize" not "prioritise", "analyze" not "analyse")
 
 AREA: ${aName}
 ${topicBlocks.join("\n\n")}
@@ -1794,7 +1796,8 @@ Write the narrative with these guidelines:
 - Close with a forward-looking paragraph on recommended focus areas to advance maturity
 - Use a professional, authoritative tone appropriate for a C-suite or board-level audience
 - Do NOT use bullet points, headers, or markdown — write in flowing prose paragraphs only
-- Do NOT mention CMMI level numbers directly; instead use their labels (Performed, Managed, Defined, Measured, Optimized) where relevant`
+- Do NOT mention CMMI level numbers directly; instead use their labels (Performed, Managed, Defined, Measured, Optimized) where relevant
+- Use American English spelling throughout (e.g., "program" not "programme", "prioritize" not "prioritise", "analyze" not "analyse")`
       }]
     })
   });
@@ -1841,7 +1844,8 @@ Respond ONLY with a valid JSON array. No preamble, no markdown, no explanation. 
 - "effort": integer 1–5 (1=very low effort, 5=very high effort)
 - "value": integer 1–5 (1=low business value, 5=very high business value)
 
-Calibrate effort and value scores realistically — not everything should be high value. Spread scores across the matrix so the payoff chart is meaningful.`
+Calibrate effort and value scores realistically — not everything should be high value. Spread scores across the matrix so the payoff chart is meaningful.
+- Use American English spelling throughout (e.g., "program" not "programme", "prioritize" not "prioritise", "analyze" not "analyse").`
       }]
     })
   });
@@ -2202,7 +2206,7 @@ Use this evidence to generate one specific, actionable recommendation per topic 
 ASSESSMENT RESULTS:
 ${areaSummaries}
 
-Return ONLY a valid JSON object. No preamble or markdown. Structure:
+Use American English spelling throughout. Return ONLY a valid JSON object. No preamble or markdown. Structure:
 {
   "Area Name": {
     "Topic Name": { "rec": "specific actionable recommendation grounded in the assessment evidence", "priority": "high|medium|low" }
@@ -2423,16 +2427,12 @@ function GoalCard({ goalNum, goalText, areaColor, responseData, onCommentChange,
         {scored && <ScoreBadge score={r.score} size="lg" />}
       </div>
 
-      {r.rationale && (() => {
-        const lvl = Math.min(5, Math.max(1, Math.round(r.score)));
-        const c = CMMI[lvl];
-        return (
-          <div style={{ marginTop: 14, padding: "12px 16px", background: `${c.bg}99`, borderRadius: 10, border: `1.5px solid ${c.color}70` }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: c.color, letterSpacing: 1, marginBottom: 5 }}>AI ASSESSMENT RATIONALE</div>
-            <p style={{ margin: 0, fontSize: 13, color: "#334155", lineHeight: 1.65 }}>{r.rationale}</p>
-          </div>
-        );
-      })()}
+      {r.rationale && (
+        <div style={{ marginTop: 14, padding: "12px 16px", background: `${CMMI[r.score]?.bg}`, borderRadius: 10, borderLeft: `3px solid ${CMMI[r.score]?.color}` }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: CMMI[r.score]?.color, letterSpacing: 1, marginBottom: 5 }}>AI ASSESSMENT RATIONALE</div>
+          <p style={{ margin: 0, fontSize: 13, color: "#334155", lineHeight: 1.65 }}>{r.rationale}</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -2807,7 +2807,7 @@ ${comment}
 
 Carefully evaluate the response. Consider what is explicitly stated, what is implied to be absent or informal, and the maturity indicators in the language used (e.g., "sometimes" vs. "always", "project-level" vs. "organization-wide", "working on" vs. "established and followed").
 
-Respond ONLY with a valid JSON object — no preamble, no markdown:
+Use American English spelling throughout. Respond ONLY with a valid JSON object — no preamble, no markdown:
 {"score": <integer 1-5>, "level": "<Performed|Managed|Defined|Measured|Optimized>", "rationale": "<2-3 sentences citing specific evidence from the response that justify the assigned score>"}`
           }]
         })
