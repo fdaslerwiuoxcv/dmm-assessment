@@ -1328,40 +1328,23 @@ function buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projecte
     // ── AI topic narratives ───────────────────────────────────────────────────
     const areaNarratives = areaSummaries ? (areaSummaries[aName] || areaSummaries[Object.keys(areaSummaries).find(k => k.toLowerCase().includes(aName.toLowerCase().slice(0,6))) || ""] || null) : null;
 
-    const priorityColors = { high: { color: "#B22000", bg: "#FDECEA" }, medium: { color: "#CC7700", bg: "#FFF5CC" }, low: { color: "#068941", bg: "#E0F5EC" } };
-
     const narrativeSection = area.topics.map((topic, tIdx) => {
       const scored = topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean);
       if (scored.length === 0) return "";
       const topicAvg = scored.reduce((a, b) => a + b, 0) / scored.length;
-
-      // Support both old shape (string) and new shape ({ narrative, recommendation, priority })
-      const rawEntry = areaNarratives
+      const narrative = areaNarratives
         ? (areaNarratives[topic.name] || areaNarratives[Object.keys(areaNarratives).find(k => k.toLowerCase().includes(topic.name.toLowerCase().slice(0,6))) || ""] || null)
         : null;
-      const narrative       = rawEntry ? (typeof rawEntry === "string" ? rawEntry : rawEntry.narrative || null) : null;
-      const recommendation  = rawEntry && typeof rawEntry === "object" ? rawEntry.recommendation || null : null;
-      const priority        = rawEntry && typeof rawEntry === "object" ? rawEntry.priority || null : null;
-      const pc              = priority ? priorityColors[priority] : null;
 
-      const recBlock = recommendation ? `
-        <div style="margin-top:12px;padding:10px 14px;border-radius:8px;background:${pc ? pc.bg : "#f8fafc"};border:1.5px solid ${pc ? pc.color + "30" : "#e2e8f0"};display:flex;align-items:flex-start;gap:10px;">
-          <div style="flex:1;">
-            <div style="font-size:9px;font-weight:700;letter-spacing:1px;color:${pc ? pc.color : "#94a3b8"};font-family:'Outfit',sans-serif;margin-bottom:4px;">RECOMMENDATION${pc ? ` • ${priority.toUpperCase()} PRIORITY` : ""}</div>
-            <p style="margin:0;font-size:12.5px;color:#334155;line-height:1.6;font-family:'Outfit',sans-serif;">${recommendation}</p>
-          </div>
-        </div>` : "";
-
-      return `<div style="margin-bottom:22px;padding-bottom:22px;border-bottom:1px solid #f1f5f9;">
+      return `<div style="margin-bottom:20px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding-bottom:6px;border-bottom:1.5px solid ${area.color}20;">
           <span style="font-size:13px;font-weight:700;color:#0f172a;font-family:'Outfit',sans-serif;">${topic.name}</span>
           ${badge(topicAvg)}
         </div>
         ${narrative
           ? `<p style="margin:0;font-size:13px;color:#334155;line-height:1.75;font-family:'Outfit',sans-serif;">${narrative}</p>`
-          : `<p style="margin:0;font-size:12px;color:#94a3b8;font-style:italic;font-family:'Outfit',sans-serif;">AI assessment pending.</p>`
+          : `<p style="margin:0;font-size:12px;color:#94a3b8;font-style:italic;font-family:'Outfit',sans-serif;">AI narrative pending — click Generate in the report overlay to populate.</p>`
         }
-        ${recBlock}
       </div>`;
     }).join("");
 
@@ -1395,7 +1378,7 @@ function buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projecte
 
       <!-- AI Assessment section -->
       <div style="border-top:1.5px solid #f1f5f9;padding-top:22px;">
-        <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin:0 0 18px;font-family:'Outfit',sans-serif;">ASSESSMENT &amp; RECOMMENDATIONS — BY TOPIC</p>
+        <p style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1.5px;margin:0 0 18px;font-family:'Outfit',sans-serif;">AI ASSESSMENT — BY TOPIC</p>
         ${narrativeSection || '<p style="color:#94a3b8;font-size:12px;font-family:Outfit,sans-serif;">No goals have been scored for this area yet.</p>'}
       </div>
 
@@ -1670,29 +1653,23 @@ async function generateSingleAreaSummary(aName, responses) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 1500,
+      max_tokens: 1000,
       messages: [{
         role: "user",
         content: `You are a senior CMMI DMM data governance consultant authoring a formal assessment report.
 
-For each topic below, provide three things:
-
-1. NARRATIVE: A concise paragraph (3–5 sentences) that:
-   - Characterizes the organization's current maturity based on the goal scores and evidence
-   - References specific observations from the assessor comments and rationales
-   - Identifies the key gap or risk
-   - Uses professional language appropriate for an executive audience
-   - Flowing prose only — no bullets, headers, or markdown
-
-2. RECOMMENDATION: One specific, actionable recommendation (max 25 words) that directly addresses the most critical gap revealed by the goal-level evidence. Ground it in the specific comments and rationales provided.
-
-3. PRIORITY: "high" if avg score < 1.8, "medium" if < 2.5, "low" if ≥ 2.5
+For each topic below, write a concise narrative paragraph (3–5 sentences) that:
+- Characterizes the organization's current maturity based on the goal scores and evidence
+- References specific observations from the assessor comments and AI rationales
+- Identifies the key gap or risk
+- Uses professional language appropriate for an executive audience
+- Flowing prose only — no bullets, headers, or markdown
 
 AREA: ${aName}
 ${topicBlocks.join("\n\n")}
 
 Return ONLY a valid JSON object. No preamble, no markdown fences. Structure:
-{ "Topic Name": { "narrative": "paragraph text", "recommendation": "actionable recommendation text", "priority": "high|medium|low" } }`
+{ "Topic Name": "narrative paragraph" }`
       }]
     })
   });
@@ -2125,167 +2102,516 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, ca
 }
 
 // ─── Topic Recs Generator ─────────────────────────────────────────────────────
+async function generateTopicRecs(responses) {
+  const areaSummaries = Object.entries(AREAS).map(([aName, area]) => {
+    const topicSummaries = area.topics.map((topic, tIdx) => {
+      const goalLines = topic.goals.map((goalText, gIdx) => {
+        const r = responses[rKey(aName, tIdx, "goal", gIdx)];
+        if (!r?.score) return null;
+        const lines = [`  Goal ${gIdx + 1} (score: ${r.score}/5): ${goalText}`];
+        if (r.comment)   lines.push(`    Current state: ${r.comment}`);
+        if (r.rationale) lines.push(`    AI rationale: ${r.rationale}`);
+        return lines.join("\n");
+      }).filter(Boolean);
 
-// ─── Dashboard Summary ────────────────────────────────────────────────────────
-function Dashboard({ responses, onNavigate, user, onExport }) {
+      if (goalLines.length === 0) return null;
+
+      const scored = topic.goals
+        .map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score)
+        .filter(Boolean);
+      const avg = (scored.reduce((a, b) => a + b, 0) / scored.length).toFixed(1);
+
+      return `  Topic: ${topic.name} (avg ${avg}/5)\n${goalLines.join("\n")}`;
+    }).filter(Boolean);
+
+    if (topicSummaries.length === 0) return null;
+    return `${aName}:\n${topicSummaries.join("\n\n")}`;
+  }).filter(Boolean).join("\n\n---\n\n");
+
+  const res = await fetch("/api/ai", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 2000,
+      messages: [{
+        role: "user",
+        content: `You are a senior CMMI DMM data governance consultant preparing targeted recommendations for a client assessment report.
+
+Below are the assessment results organized by area and topic. For each topic you will find the individual goal scores, the assessor's description of the organization's current state, and the AI rationale that justified each score.
+
+Use this evidence to generate one specific, actionable recommendation per topic (max 20 words) that directly addresses the most critical gap revealed by the goal-level detail — not just the average score.
+
+ASSESSMENT RESULTS:
+${areaSummaries}
+
+Return ONLY a valid JSON object. No preamble or markdown. Structure:
+{
+  "Area Name": {
+    "Topic Name": { "rec": "specific actionable recommendation grounded in the assessment evidence", "priority": "high|medium|low" }
+  }
+}
+
+Priority rules: avg score < 1.8 → high, < 2.5 → medium, ≥ 2.5 → low.`
+      }]
+    })
+  });
+
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  const raw = data.content.map(c => c.text || "").join("").trim();
+  const clean = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+  return JSON.parse(clean);
+}
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+function Dashboard({ responses, onNavigate, user, onExport, topicRecs, onTopicRecsChange }) {
   const stats = getStats(responses);
-  const areaList = getAllAreaScores(responses);
   const overallLevel = stats.avg ? Math.round(stats.avg) : null;
   const overallCmmi = overallLevel ? CMMI[overallLevel] : null;
+  const [recsLoading, setRecsLoading] = useState(false);
+  const [recsError, setRecsError] = useState("");
+
+  // Load cached recs from storage on first mount (only if not already in parent state)
+  useEffect(() => {
+    if (topicRecs) return; // already have them in parent state
+    (async () => {
+      try {
+        const cached = await window.storage.get("dmm_topic_recs");
+        if (cached?.value) {
+          const parsed = JSON.parse(cached.value);
+          if (parsed && typeof parsed === "object") onTopicRecsChange(parsed);
+        }
+      } catch (e) {
+        // Key not found or parse error — stay in "not generated" state
+      }
+    })();
+  }, []);
+
+  const handleGenerateRecs = async () => {
+    setRecsLoading(true);
+    setRecsError("");
+    try {
+      const recs = await generateTopicRecs(responses);
+      onTopicRecsChange(recs);
+      // Cache to storage independently — a write failure shouldn't surface as a user error
+      try {
+        await window.storage.set("dmm_topic_recs", JSON.stringify(recs));
+      } catch (storageErr) {
+        console.warn("Could not cache recommendations to storage:", storageErr);
+      }
+    } catch (e) {
+      console.error("Topic recs error:", e);
+      setRecsError("Failed to generate recommendations. Please try again.");
+    } finally {
+      setRecsLoading(false);
+    }
+  };
 
   return (
-    <div style={{ padding: "28px 32px", maxWidth: 960, margin: "0 auto" }}>
-      {/* Header */}
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", marginBottom: 4 }}>
-          Assessment Dashboard
+    <div style={{ padding: "32px 36px", fontFamily: "'Outfit', sans-serif" }}>
+      <style>{`
+        @keyframes fadeIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes shimmer { 0%,100%{opacity:0.4} 50%{opacity:1} }
+        .area-card { background:white; border-radius:16px; padding:20px; border:1.5px solid #F1F5F9; transition:box-shadow .2s,transform .15s; cursor:pointer; }
+        .area-card:hover { box-shadow:0 8px 24px rgba(0,0,0,.08); transform:translateY(-2px); }
+      `}</style>
+
+      <div style={{ marginBottom: 32, animation: "fadeIn .4s ease", display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 26, fontWeight: 700, color: "#0F172A", fontFamily: "'Fraunces', serif" }}>Assessment Dashboard</h2>
+          <p style={{ color: "#64748B", marginTop: 6, fontSize: 14 }}>Track your organization's CMMI Data Management Maturity progress</p>
         </div>
-        <div style={{ fontSize: 14, color: "#64748B" }}>
-          {user.org} · CMMI DMM Maturity Overview
-        </div>
+        <button
+          onClick={onExport}
+          style={{ display: "flex", alignItems: "center", gap: 8, background: "linear-gradient(135deg,#070F26,#005B96)", border: "none", borderRadius: 10, padding: "10px 18px", color: "white", fontSize: 13, fontWeight: 600, fontFamily: "inherit", cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 2px 10px rgba(0,114,188,.25)", transition: "opacity .15s" }}
+          onMouseOver={e => e.currentTarget.style.opacity = ".85"}
+          onMouseOut={e => e.currentTarget.style.opacity = "1"}
+        >
+          <span style={{ fontSize: 15 }}>⬇</span> Export PDF
+        </button>
       </div>
 
-      {/* Top KPI row */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 24 }}>
-        {/* Overall score */}
-        <div style={{ background: "white", borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,.06)", border: "1px solid #E2E8F0" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.2, color: "#94A3B8", marginBottom: 10 }}>OVERALL SCORE</div>
-          {stats.avg ? (
-            <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-              <span style={{ fontSize: 36, fontWeight: 800, color: overallCmmi?.color }}>{stats.avg.toFixed(1)}</span>
-              <span style={{ fontSize: 14, color: "#94A3B8" }}>/ 5.0</span>
-            </div>
-          ) : (
-            <div style={{ fontSize: 24, fontWeight: 700, color: "#CBD5E1" }}>—</div>
-          )}
-          {overallCmmi && (
-            <div style={{ marginTop: 6, display: "inline-flex", alignItems: "center", gap: 6, background: overallCmmi.bg, borderRadius: 20, padding: "3px 10px" }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: overallCmmi.color, display: "inline-block" }} />
-              <span style={{ fontSize: 12, fontWeight: 700, color: overallCmmi.color }}>{overallCmmi.label}</span>
-            </div>
-          )}
-        </div>
+      {/* Top summary row: overall score + master radar + CMMI scale */}
+      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr 220px", gap: 16, marginBottom: 28, animation: "fadeIn .5s ease" }}>
 
-        {/* Progress */}
-        <div style={{ background: "white", borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,.06)", border: "1px solid #E2E8F0" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.2, color: "#94A3B8", marginBottom: 10 }}>COMPLETION</div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-            <span style={{ fontSize: 36, fontWeight: 800, color: "#0072BC" }}>{stats.pct}%</span>
-          </div>
-          <div style={{ marginTop: 8, background: "#EFF6FF", borderRadius: 4, height: 6, overflow: "hidden" }}>
-            <div style={{ width: `${stats.pct}%`, background: "linear-gradient(90deg, #0072BC, #009AA4)", height: "100%", borderRadius: 4, transition: "width .6s" }} />
-          </div>
-          <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 6 }}>{stats.scoredGoals} of {stats.totalGoals} goals scored</div>
-        </div>
-
-        {/* Areas summary */}
-        <div style={{ background: "white", borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,.06)", border: "1px solid #E2E8F0" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.2, color: "#94A3B8", marginBottom: 10 }}>AREAS ASSESSED</div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-            <span style={{ fontSize: 36, fontWeight: 800, color: "#0F172A" }}>
-              {areaList.filter(a => a.score > 0).length}
-            </span>
-            <span style={{ fontSize: 14, color: "#94A3B8" }}>/ {areaList.length}</span>
-          </div>
-          <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 6 }}>
-            {areaList.filter(a => a.score > 0).length === areaList.length
-              ? "All areas have scores"
-              : `${areaList.length - areaList.filter(a => a.score > 0).length} area(s) pending`}
-          </div>
-        </div>
-      </div>
-
-      {/* Radar + Area cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 20, alignItems: "start" }}>
-        {/* Radar */}
-        <div style={{ background: "#070F26", borderRadius: 14, padding: "20px 16px", boxShadow: "0 1px 4px rgba(0,0,0,.1)" }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,.35)", letterSpacing: 1.2, marginBottom: 10 }}>MATURITY RADAR</div>
-          <MasterRadarChart responses={responses} />
-        </div>
-
-        {/* Area score cards */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {areaList.map(({ area, score, color }) => {
-            const lvl = score > 0 ? Math.round(score) : null;
-            const cmmi = lvl ? CMMI[lvl] : null;
-            const areaProgress = stats.areaStats[area];
-            const pct = areaProgress?.total > 0 ? Math.round((areaProgress.scored / areaProgress.total) * 100) : 0;
-            return (
-              <button
-                key={area}
-                onClick={() => onNavigate(area)}
-                style={{ background: "white", border: "1px solid #E2E8F0", borderRadius: 12, padding: "14px 18px", cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 14, transition: "box-shadow .15s, border-color .15s", fontFamily: "inherit" }}
-                onMouseOver={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,.08)"; e.currentTarget.style.borderColor = color; }}
-                onMouseOut={e => { e.currentTarget.style.boxShadow = "none"; e.currentTarget.style.borderColor = "#E2E8F0"; }}
-              >
-                <div style={{ width: 40, height: 40, borderRadius: 10, background: score > 0 ? color : "#F1F5F9", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <span style={{ fontSize: 18 }}>{Object.values(AREAS).find((_, i) => Object.keys(AREAS)[i] === area)?.icon || "📊"}</span>
+        {/* Overall score + completion stacked */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ background: "linear-gradient(135deg, #070F26, #005B96)", borderRadius: 16, padding: 22, color: "white", flex: 1 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: 1.2, color: "#7BCFFF", marginBottom: 10 }}>OVERALL MATURITY</div>
+            {stats.avg ? (
+              <>
+                <div style={{ fontSize: 44, fontWeight: 700, lineHeight: 1, fontFamily: "'Fraunces', serif" }}>{stats.avg ? stats.avg.toFixed(1) : "—"}</div>
+                <div style={{ fontSize: 13, color: "#B3DEFF", marginTop: 5 }}>out of 5.0 — {overallCmmi?.label}</div>
+                <div style={{ marginTop: 10, background: "rgba(255,255,255,.1)", borderRadius: 4, height: 4 }}>
+                  <div style={{ width: `${(stats.avg / 5) * 100}%`, background: "#19A3FC", height: 4, borderRadius: 4, transition: "width .6s ease" }} />
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 700, color: "#0F172A", marginBottom: 3 }}>{area}</div>
-                  <div style={{ background: "#F1F5F9", borderRadius: 3, height: 4, overflow: "hidden" }}>
-                    <div style={{ width: `${pct}%`, background: color, height: "100%", borderRadius: 3, transition: "width .6s" }} />
+              </>
+            ) : (
+              <div style={{ color: "#7BCFFF", fontSize: 13, marginTop: 8 }}>No goals scored yet</div>
+            )}
+          </div>
+          <div style={{ background: "white", borderRadius: 16, padding: 18, border: "1.5px solid #F1F5F9" }}>
+            <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: 1.2, color: "#94A3B8", marginBottom: 10 }}>GOALS COMPLETED</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <div style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                <ProgressRing pct={stats.pct} size={60} color="#0072BC" />
+                <span style={{ position: "absolute", fontSize: 12, fontWeight: 700, color: "#1E293B" }}>{stats.pct}%</span>
+              </div>
+              <div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "#0F172A" }}>{stats.scoredGoals}<span style={{ fontSize: 13, color: "#94A3B8", fontWeight: 400 }}>/{stats.totalGoals}</span></div>
+                <div style={{ fontSize: 12, color: "#64748B" }}>goals analyzed</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Master Radar */}
+        <div style={{ background: "linear-gradient(145deg, #070F26, #0A1E3D)", borderRadius: 16, padding: "20px 16px 10px", border: "1px solid rgba(255,255,255,.06)" }}>
+          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: 1.2, color: "rgba(165,180,252,.6)", marginBottom: 0, paddingLeft: 8 }}>MATURITY ACROSS ALL AREAS</div>
+          <MasterRadarChart responses={responses} />
+          {/* Area color legend */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", paddingBottom: 6 }}>
+            {Object.entries(AREAS).map(([aName, area]) => (
+              <div key={aName} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: area.color, display: "inline-block" }} />
+                <span style={{ fontSize: 10.5, color: "rgba(255,255,255,.35)", fontFamily: "'Outfit', sans-serif" }}>{area.short}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* CMMI scale reference */}
+        <div style={{ background: "white", borderRadius: 16, padding: 20, border: "1.5px solid #F1F5F9", display: "flex", flexDirection: "column" }}>
+          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: 1.2, color: "#94A3B8", marginBottom: 14 }}>CMMI SCALE REFERENCE</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, justifyContent: "space-around" }}>
+            {Object.entries(CMMI).map(([lvl, c]) => (
+              <div key={lvl} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ width: 28, height: 28, borderRadius: 8, background: c.bg, border: `1.5px solid ${c.color}50`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: c.color, flexShrink: 0 }}>{lvl}</span>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>{c.label}</div>
+                  <div style={{ fontSize: 11, color: "#94A3B8" }}>{c.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Area cards with embedded radar */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "#94A3B8", letterSpacing: 1.2 }}>ASSESSMENT AREAS</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {recsError && <span style={{ fontSize: 12, color: "#B22000" }}>{recsError}</span>}
+          {topicRecs && !recsLoading && (
+            <span style={{ fontSize: 11, color: "#94A3B8" }}>Recommendations cached</span>
+          )}
+          <button
+            onClick={handleGenerateRecs}
+            disabled={recsLoading || stats.scoredGoals === 0}
+            style={{ display: "flex", alignItems: "center", gap: 7, background: recsLoading ? "rgba(0,114,188,.4)" : "linear-gradient(135deg,#0072BC,#009AA4)", border: "none", borderRadius: 8, padding: "7px 14px", color: "white", fontSize: 12, fontWeight: 600, fontFamily: "inherit", cursor: recsLoading || stats.scoredGoals === 0 ? "not-allowed" : "pointer", opacity: stats.scoredGoals === 0 ? 0.4 : 1, whiteSpace: "nowrap", transition: "opacity .15s" }}
+          >
+            {recsLoading ? (
+              <>
+                <span style={{ width: 10, height: 10, border: "2px solid rgba(255,255,255,.3)", borderTop: "2px solid white", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite" }} />
+                Generating…
+              </>
+            ) : (
+              <>✦ {topicRecs ? "Refresh" : "Generate"} Recommendations</>
+            )}
+          </button>
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14, animation: "fadeIn .6s ease" }}>
+        {Object.entries(AREAS).map(([aName, area]) => {
+          const as_ = stats.areaStats[aName];
+          const pct = as_.total > 0 ? Math.round((as_.scored / as_.total) * 100) : 0;
+          return (
+            <div key={aName} className="area-card" onClick={() => onNavigate(aName)} style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+
+              {/* Card header */}
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ width: 36, height: 36, borderRadius: 10, background: `${area.color}15`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>{area.icon}</span>
+                  <div>
+                    <div style={{ fontWeight: 600, color: "#0F172A", fontSize: 15 }}>{aName}</div>
+                    <div style={{ color: "#94A3B8", fontSize: 12 }}>{area.topics.length} topics · {as_.total} goals</div>
                   </div>
                 </div>
-                <div style={{ textAlign: "right", flexShrink: 0 }}>
-                  {score > 0 ? (
-                    <>
-                      <div style={{ fontSize: 18, fontWeight: 800, color: cmmi?.color }}>{score.toFixed(1)}</div>
-                      <div style={{ fontSize: 11, color: cmmi?.color, fontWeight: 600 }}>{cmmi?.label}</div>
-                    </>
-                  ) : (
-                    <div style={{ fontSize: 13, color: "#CBD5E1", fontWeight: 600 }}>Not scored</div>
-                  )}
+                {as_.avg && <ScoreBadge score={as_.avg} />}
+              </div>
+
+              {/* Radar chart */}
+              <div style={{ borderTop: `1px solid ${area.color}15`, borderBottom: `1px solid ${area.color}15`, margin: "0 -20px", padding: "4px 0" }}>
+                <AreaRadarChart areaName={aName} responses={responses} />
+              </div>
+
+              {/* Progress bar */}
+              <div style={{ marginTop: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, color: "#94A3B8" }}>Scoring progress</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>{as_.scored}/{as_.total} goals</span>
                 </div>
-              </button>
-            );
-          })}
-        </div>
+                <div style={{ background: "#F1F5F9", borderRadius: 4, height: 5 }}>
+                  <div style={{ width: `${pct}%`, background: area.color, height: 5, borderRadius: 4, transition: "width .6s ease" }} />
+                </div>
+              </div>
+
+              {/* Topic pills */}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 10 }}>
+
+              {/* Topic Recommendations */}
+              {(topicRecs || recsLoading) && (() => {
+                const priorityConfig = {
+                  high:   { color: "#B22000", bg: "#FDECEA" },
+                  medium: { color: "#CC7700", bg: "#FFF5CC" },
+                  low:    { color: "#068941", bg: "#E0F5EC" },
+                };
+                const areaRecs = topicRecs
+                  ? (topicRecs[aName] || topicRecs[Object.keys(topicRecs).find(k => k.toLowerCase().includes(aName.toLowerCase().slice(0, 6))) || ""] || {})
+                  : {};
+                return (
+                  <div style={{ width: "100%", marginTop: 14, marginBottom: 4, display: "flex", flexDirection: "column", gap: 5 }} onClick={e => e.stopPropagation()}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "#94A3B8", letterSpacing: 1.2, marginBottom: 2 }}>TOPIC RECOMMENDATIONS</div>
+                    {area.topics.map((topic, tIdx) => {
+                      const scored = topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean);
+                      const avg = scored.length > 0 ? scored.reduce((a, b) => a + b, 0) / scored.length : null;
+                      const topicRec = areaRecs[topic.name] || areaRecs[Object.keys(areaRecs).find(k => k.toLowerCase().includes(topic.name.toLowerCase().slice(0, 6))) || ""] || null;
+                      const priority = topicRec?.priority || (avg ? (avg < 1.8 ? "high" : avg < 2.5 ? "medium" : "low") : null);
+                      const pc = priority ? priorityConfig[priority] : null;
+                      return recsLoading ? (
+                        <div key={tIdx} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, background: "#F8FAFC", border: "1px solid #F1F5F9" }}>
+                          <div style={{ width: 28, height: 8, borderRadius: 4, background: "#E2E8F0", animation: "shimmer 1.4s ease infinite" }} />
+                          <div style={{ flex: 1, height: 8, borderRadius: 4, background: "#E2E8F0", animation: "shimmer 1.4s ease infinite", animationDelay: `${tIdx * 0.1}s` }} />
+                        </div>
+                      ) : (
+                        <div key={tIdx} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "7px 10px", borderRadius: 8, background: pc ? pc.bg + "66" : "#F8FAFC", border: `1px solid ${pc ? pc.color + "22" : "#F1F5F9"}` }}>
+                          {avg && (
+                            <span style={{ fontSize: 10, fontWeight: 700, color: pc?.color || "#94A3B8", background: "white", border: `1px solid ${pc?.color || "#E2E8F0"}44`, borderRadius: 4, padding: "1px 5px", whiteSpace: "nowrap", flexShrink: 0, marginTop: 1 }}>
+                              {avg.toFixed(1)}
+                            </span>
+                          )}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 10.5, fontWeight: 600, color: "#64748B", marginBottom: 1 }}>{topic.name}</div>
+                            <div style={{ fontSize: 11.5, color: "#334155", lineHeight: 1.45 }}>
+                              {topicRec?.rec || <span style={{ color: "#94A3B8", fontStyle: "italic" }}>No scores recorded</span>}
+                            </div>
+                          </div>
+                          {pc && priority && (
+                            <span style={{ fontSize: 9.5, fontWeight: 700, color: pc.color, background: "white", border: `1px solid ${pc.color}33`, borderRadius: 4, padding: "2px 6px", flexShrink: 0, marginTop: 1, textTransform: "capitalize" }}>
+                              {priority}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+                {area.topics.map((t, i) => {
+                  const scored = t.goals.filter((_, gIdx) => responses[rKey(aName, i, "goal", gIdx)]?.score).length;
+                  const topicAvg = scored > 0
+                    ? t.goals.map((_, gIdx) => responses[rKey(aName, i, "goal", gIdx)]?.score).filter(Boolean).reduce((a, b) => a + b, 0) / scored
+                    : null;
+                  return (
+                    <span key={i} style={{ fontSize: 11, padding: "3px 9px", borderRadius: 20, background: scored > 0 ? `${area.color}12` : "#F8FAFC", color: scored > 0 ? area.color : "#94A3B8", border: `1px solid ${scored > 0 ? area.color + "30" : "#E2E8F0"}`, fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
+                      {t.name}
+                      {topicAvg && <span style={{ fontWeight: 700 }}>· {topicAvg.toFixed(1)}</span>}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Goal Card ────────────────────────────────────────────────────────────────
+function GoalCard({ goalNum, goalText, areaColor, responseData, onCommentChange, onAnalyze, isAnalyzing }) {
+  const r = responseData || {};
+  const scored = !!r.score;
+
+  return (
+    <div style={{ background: "white", borderRadius: 14, border: `1.5px solid ${scored ? areaColor + "30" : "#E2E8F0"}`, padding: 22, marginBottom: 14, transition: "border-color .2s" }}>
+      <style>{`
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+        .analyze-btn { background:linear-gradient(135deg, #0072BC, #009AA4); border:none; border-radius:8px; padding:9px 18px; color:white; font-size:13px; font-weight:600; font-family:'Outfit',sans-serif; cursor:pointer; transition:opacity .2s; white-space:nowrap; }
+        .analyze-btn:hover:not(:disabled) { opacity:.85; }
+        .analyze-btn:disabled { opacity:.5; cursor:not-allowed; }
+        .goal-textarea { width:100%; border:1.5px solid #E2E8F0; border-radius:10px; padding:12px; font-size:14px; font-family:'Outfit',sans-serif; color:#334155; resize:vertical; min-height:90px; outline:none; transition:border-color .2s; box-sizing:border-box; line-height:1.6; }
+        .goal-textarea:focus { border-color:#19A3FC; }
+        .goal-textarea::placeholder { color:#CBD5E1; }
+      `}</style>
+
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
+        <span style={{ width: 28, height: 28, borderRadius: 8, background: `${areaColor}15`, color: areaColor, fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>G{goalNum}</span>
+        <p style={{ margin: 0, fontSize: 14, color: "#334155", lineHeight: 1.65, fontWeight: 500 }}>{goalText}</p>
       </div>
 
-      {/* Export CTA */}
-      {stats.scoredGoals > 0 && (
-        <div style={{ marginTop: 24, background: "linear-gradient(135deg, #0072BC, #009AA4)", borderRadius: 14, padding: "20px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "white", marginBottom: 3 }}>Ready to export your report?</div>
-            <div style={{ fontSize: 13, color: "rgba(255,255,255,.7)" }}>Generate a full AI-powered PDF with recommendations and projections.</div>
-          </div>
-          <button
-            onClick={onExport}
-            style={{ background: "white", border: "none", borderRadius: 10, padding: "10px 20px", fontSize: 13, fontWeight: 700, color: "#0072BC", cursor: "pointer", whiteSpace: "nowrap", fontFamily: "inherit" }}
-          >
-            ⬇ Export PDF Report
-          </button>
+      <textarea
+        className="goal-textarea"
+        placeholder="Describe your organization's current state for this goal. Include specific processes, tools, roles, or policies in place. The more detail you provide, the more accurate the AI scoring will be..."
+        value={r.comment || ""}
+        onChange={e => onCommentChange(e.target.value)}
+      />
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, flexWrap: "wrap", gap: 10 }}>
+        <button className="analyze-btn" onClick={onAnalyze} disabled={!r.comment?.trim() || isAnalyzing}>
+          {isAnalyzing ? (
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ width: 12, height: 12, border: "2px solid rgba(255,255,255,.3)", borderTop: "2px solid white", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite" }} />
+              Analyzing...
+            </span>
+          ) : "✦ Analyze with AI"}
+        </button>
+        {scored && <ScoreBadge score={r.score} size="lg" />}
+      </div>
+
+      {r.rationale && (
+        <div style={{ marginTop: 14, padding: "12px 16px", background: `${CMMI[r.score]?.bg}`, borderRadius: 10, borderLeft: `3px solid ${CMMI[r.score]?.color}` }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: CMMI[r.score]?.color, letterSpacing: 1, marginBottom: 5 }}>AI ASSESSMENT RATIONALE</div>
+          <p style={{ margin: 0, fontSize: 13, color: "#334155", lineHeight: 1.65 }}>{r.rationale}</p>
         </div>
       )}
     </div>
   );
 }
 
+// ─── Question Card ────────────────────────────────────────────────────────────
+function QuestionCard({ qNum, qText, comment, onCommentChange }) {
+  return (
+    <div style={{ background: "#FAFAFA", borderRadius: 12, border: "1.5px solid #E2E8F0", padding: 18, marginBottom: 10 }}>
+      <style>{`.q-textarea { width:100%; border:1.5px solid #E2E8F0; border-radius:10px; padding:10px 12px; font-size:14px; font-family:'Outfit',sans-serif; color:#334155; resize:vertical; min-height:70px; outline:none; background:white; transition:border-color .2s; box-sizing:border-box; line-height:1.6; } .q-textarea:focus { border-color:#CBD5E1; } .q-textarea::placeholder { color:#CBD5E1; }`}</style>
+      <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: "#94A3B8", flexShrink: 0, paddingTop: 1 }}>Q{qNum}</span>
+        <p style={{ margin: 0, fontSize: 13.5, color: "#475569", lineHeight: 1.6 }}>{qText}</p>
+      </div>
+      <textarea
+        className="q-textarea"
+        placeholder="Enter your notes or observations for this question..."
+        value={comment || ""}
+        onChange={e => onCommentChange(e.target.value)}
+      />
+    </div>
+  );
+}
+
+// ─── Assessment View ──────────────────────────────────────────────────────────
+function AssessmentView({ areaName, responses, analyzing, onGoalComment, onQuestionComment, onAnalyze }) {
+  const area = AREAS[areaName];
+  const [activeTopic, setActiveTopic] = useState(0);
+
+  // Reset to first topic whenever the area changes — prevents index-out-of-bounds crash
+  // when switching from an area with more topics to one with fewer
+  useEffect(() => { setActiveTopic(0); }, [areaName]);
+
+  const topic = area?.topics?.[activeTopic];
+  const stats = getStats(responses).areaStats[areaName];
+
+  // Guard: if area or topic hasn't resolved yet, render nothing
+  if (!area || !topic) return null;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", fontFamily: "'Outfit', sans-serif" }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } } @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }`}</style>
+
+      {/* Area header */}
+      <div style={{ padding: "24px 36px 0", background: "white", borderBottom: "1.5px solid #F1F5F9" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ width: 40, height: 40, borderRadius: 12, background: `${area.color}15`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>{area.icon}</span>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "#0F172A", fontFamily: "'Fraunces', serif" }}>{areaName}</h2>
+              <span style={{ fontSize: 12, color: "#94A3B8" }}>{stats.scored}/{stats.total} goals scored</span>
+            </div>
+          </div>
+          {stats.avg && <ScoreBadge score={stats.avg} size="lg" />}
+        </div>
+
+        {/* Topic tabs */}
+        <div style={{ display: "flex", gap: 4, overflowX: "auto", paddingBottom: 0 }}>
+          {area.topics.map((t, i) => {
+            const scored = t.goals.filter((_, gIdx) => responses[rKey(areaName, i, "goal", gIdx)]?.score).length;
+            const active = activeTopic === i;
+            return (
+              <button key={i} onClick={() => setActiveTopic(i)} style={{ padding: "10px 16px", border: "none", background: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: active ? 700 : 500, color: active ? area.color : "#64748B", borderBottom: active ? `2.5px solid ${area.color}` : "2.5px solid transparent", transition: "all .15s", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
+                {t.name}
+                {scored > 0 && <span style={{ fontSize: 10, background: `${area.color}20`, color: area.color, borderRadius: 10, padding: "1px 6px", fontWeight: 700 }}>{scored}/{t.goals.length}</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "28px 36px", animation: "fadeIn .3s ease" }}>
+        {/* Goals */}
+        <div style={{ marginBottom: 32 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#0F172A", letterSpacing: .5 }}>GOALS</span>
+            <span style={{ fontSize: 11, background: `${area.color}15`, color: area.color, borderRadius: 20, padding: "3px 10px", fontWeight: 600 }}>{topic.goals.length} items · AI scored</span>
+            <div style={{ flex: 1, height: 1, background: "#F1F5F9" }} />
+          </div>
+          {topic.goals.map((goal, gIdx) => (
+            <GoalCard
+              key={gIdx}
+              goalNum={gIdx + 1}
+              goalText={goal}
+              areaColor={area.color}
+              responseData={responses[rKey(areaName, activeTopic, "goal", gIdx)]}
+              onCommentChange={v => onGoalComment(areaName, activeTopic, gIdx, v)}
+              onAnalyze={() => onAnalyze(areaName, activeTopic, gIdx)}
+              isAnalyzing={analyzing === `${areaName}__${activeTopic}__${gIdx}`}
+            />
+          ))}
+        </div>
+
+        {/* Questions */}
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#0F172A", letterSpacing: .5 }}>ASSESSMENT QUESTIONS</span>
+            <span style={{ fontSize: 11, background: "#F1F5F9", color: "#64748B", borderRadius: 20, padding: "3px 10px", fontWeight: 600 }}>{topic.questions.length} items · Commentary only</span>
+            <div style={{ flex: 1, height: 1, background: "#F1F5F9" }} />
+          </div>
+          <p style={{ fontSize: 12.5, color: "#94A3B8", marginBottom: 14, marginTop: -6, fontStyle: "italic" }}>These questions guide your assessment discussion. Enter observations and notes — they inform the broader topic narrative but are not individually scored.</p>
+          {topic.questions.map((q, qIdx) => (
+            <QuestionCard
+              key={qIdx}
+              qNum={qIdx + 1}
+              qText={q}
+              comment={responses[rKey(areaName, activeTopic, "q", qIdx)]?.comment}
+              onCommentChange={v => onQuestionComment(areaName, activeTopic, qIdx, v)}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main App Shell ───────────────────────────────────────────────────────────
-function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment, onAnalyze, onLogout, onClearAICache }) {
+function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment, onAnalyze, onLogout, onClearTopicRecs }) {
   const [activeView, setActiveView] = useState("dashboard");
   const [showReport, setShowReport] = useState(false);
+  const [topicRecs, setTopicRecs] = useState(null);
   const [reportSummary, setReportSummary] = useState(null);
-  const [reportRecs, setReportRecs] = useState([]);
-  const [reportAreaSummaries, setReportAreaSummaries] = useState({});
+  const [reportRecs, setReportRecs] = useState(null);
+  const [reportAreaSummaries, setReportAreaSummaries] = useState(null);
   const [reportProjectedScores, setReportProjectedScores] = useState(null);
 
-  // Expose cache-clear to parent
+  // Expose a way for Root to clear all AI cache state when scores change
   useEffect(() => {
-    if (onClearAICache) {
-      onClearAICache(() => {
-        setReportSummary(null);
-        setReportRecs([]);
-        setReportAreaSummaries({});
-        setReportProjectedScores(null);
-      });
-    }
-  }, [onClearAICache]);
-
-  const stats = getStats(responses);
-  const overallLevel = stats.avg ? Math.round(stats.avg) : null;
-  const overallCmmi = overallLevel ? CMMI[overallLevel] : null;
+    if (onClearTopicRecs) onClearTopicRecs(() => {
+      setTopicRecs(null);
+      setReportSummary(null);
+      setReportRecs(null);
+      setReportAreaSummaries(null);
+      setReportProjectedScores(null);
+    });
+  }, []);
 
   // Load cached report AI content from storage on mount
   useEffect(() => {
@@ -2296,6 +2622,7 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
       try { const j = await window.storage.get("dmm_report_projections");      if (j?.value) { const p = JSON.parse(j.value); if (p && typeof p === "object") setReportProjectedScores(p); } } catch (e) {}
     })();
   }, []);
+  const stats = getStats(responses);
 
   const navItem = (label, view, icon, color) => {
     const active = activeView === view;
@@ -2369,7 +2696,7 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
       {/* Content */}
       <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
         {activeView === "dashboard"
-          ? <Dashboard responses={responses} onNavigate={v => setActiveView(v)} user={user} onExport={() => setShowReport(true)} />
+          ? <Dashboard responses={responses} onNavigate={v => setActiveView(v)} user={user} onExport={() => setShowReport(true)} topicRecs={topicRecs} onTopicRecsChange={setTopicRecs} />
           : <AssessmentView
               areaName={activeView}
               responses={responses}
@@ -2440,18 +2767,19 @@ export default function App() {
     }
   }, [user, screen]);
 
-  const clearAICacheRef = useRef(null);
+  const clearTopicRecsRef = useRef(null);
 
   const saveResponses = async (r) => {
     setResponses(r);
     try { await window.storage.set("dmm_responses", JSON.stringify(r)); } catch (e) {}
     // Invalidate all cached AI content so it reflects new scores
+    try { await window.storage.delete("dmm_topic_recs"); } catch (e) {}
     try { await window.storage.delete("dmm_report_summary"); } catch (e) {}
     try { await window.storage.delete("dmm_report_recs"); } catch (e) {}
     try { await window.storage.delete("dmm_report_area_summaries"); } catch (e) {}
     try { await window.storage.delete("dmm_report_projections"); } catch (e) {}
     // Also clear in-memory recs in MainApp
-    if (clearAICacheRef.current) clearAICacheRef.current();
+    if (clearTopicRecsRef.current) clearTopicRecsRef.current();
   };
 
   const handleLogin = async (name, org, role) => {
@@ -2566,7 +2894,7 @@ Respond ONLY with a valid JSON object — no preamble, no markdown:
         onQuestionComment={handleQuestionComment}
         onAnalyze={handleAnalyze}
         onLogout={handleLogout}
-        onClearAICache={fn => { clearAICacheRef.current = fn; }}
+        onClearTopicRecs={fn => { clearTopicRecsRef.current = fn; }}
       />
     </ErrorBoundary>
   );
