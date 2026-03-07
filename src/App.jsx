@@ -1732,11 +1732,13 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSumm
       if (asRes.status === "rejected") console.error("AI area summaries error:",   asRes.reason?.message || asRes.reason);
       if (rpRes.status === "rejected") console.error("AI recs+projections error:", rpRes.reason?.message || rpRes.reason);
 
-      summaryRef.current                = summary;
-      areaSummariesRef.current          = areaSummaries;
+      summaryRef.current                  = summary;
+      areaSummariesRef.current            = areaSummaries;
+      areaRecsAndProjectionsRef.current   = areaRecsAndProjections;
 
-      if (summary                && !cachedSummary                && onSummaryGenerated)                onSummaryGenerated(summary);
-      if (areaSummaries          && !cachedAreaSummaries          && onAreaSummariesGenerated)          onAreaSummariesGenerated(areaSummaries);
+      if (summary                && !cachedSummary                && onSummaryGenerated)                   onSummaryGenerated(summary);
+      if (areaSummaries          && !cachedAreaSummaries          && onAreaSummariesGenerated)             onAreaSummariesGenerated(areaSummaries);
+      if (areaRecsAndProjections && !cachedAreaRecsAndProjections && onAreaRecsAndProjectionsGenerated)   onAreaRecsAndProjectionsGenerated(areaRecsAndProjections);
 
       try {
         const projectedScores = extractProjectedScores(areaRecsAndProjections);
