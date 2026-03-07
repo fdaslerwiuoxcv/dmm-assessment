@@ -1176,12 +1176,11 @@ function areaRadarSVG(aName, responses, size = 300, projectedScores = null) {
 
 // ─── Payoff Matrix SVG ────────────────────────────────────────────────────────
 // ─── Report Page Builders ─────────────────────────────────────────────────────
-function buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projectedScores = null, areaRecsAndProjections = null) {
+function buildAreaPages(responses, areaSummaries, C, badge, bar, stats) {
   return Object.entries(AREAS).map(([aName, area]) => {
     const as_ = stats.areaStats[aName];
     const areaAvg = as_.avg;
-    const areaProjections = projectedScores ? (projectedScores[aName] ?? null) : null;
-    const radarSvg = areaRadarSVG(aName, responses, 320, areaProjections);
+    const radarSvg = areaRadarSVG(aName, responses, 320, null);
     const areaNarratives = areaSummaries ? (areaSummaries[aName] || areaSummaries[Object.keys(areaSummaries).find(k => k.toLowerCase().includes(aName.toLowerCase().slice(0,6))) || ""] || null) : null;
 
     const narrativeSection = area.topics.map((topic, tIdx) => {
@@ -1192,21 +1191,7 @@ function buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projecte
         ? (areaNarratives[topic.name] || areaNarratives[Object.keys(areaNarratives).find(k => k.toLowerCase().includes(topic.name.toLowerCase().slice(0,6))) || ""] || null)
         : null;
 
-      const areaTopicRecs = areaRecsAndProjections ? (areaRecsAndProjections[aName] || null) : null;
-      const topicRecData = areaTopicRecs
-        ? (areaTopicRecs[topic.name] || areaTopicRecs[Object.keys(areaTopicRecs).find(k => k.toLowerCase().includes(topic.name.toLowerCase().slice(0, 6))) || ""] || null)
-        : null;
-      const recBullets = topicRecData?.recs?.length > 0
-        ? `<div style="margin-top:14px;padding-top:12px;border-top:1px solid ${area.color}18;">
-            <p style="font-size:9.5px;font-weight:700;color:#94a3b8;letter-spacing:1.4px;margin:0 0 8px;font-family:'Outfit',sans-serif;text-transform:uppercase;">Recommendations</p>
-            <ul style="margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:7px;">
-              ${topicRecData.recs.map(r => `<li style="display:flex;align-items:flex-start;gap:9px;font-size:12.5px;color:#334155;line-height:1.65;font-family:'Outfit',sans-serif;">
-                <span style="width:18px;height:18px;border-radius:50%;background:${area.color}18;border:1.5px solid ${area.color}40;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:${area.color};flex-shrink:0;margin-top:1px;">→</span>
-                <span>${r}</span>
-              </li>`).join("")}
-            </ul>
-          </div>`
-        : "";
+      const recBullets = "";
 
       return `<div style="margin-bottom:24px;padding-bottom:24px;border-bottom:1px solid #f1f5f9;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-bottom:8px;border-bottom:1.5px solid ${area.color}20;">
@@ -1250,7 +1235,7 @@ function buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projecte
   }).join("");
 }
 
-function buildReportHTML(user, responses, aiSummary = null, areaSummaries = null, projectedScores = null, areaRecsAndProjections = null) {
+function buildReportHTML(user, responses, aiSummary = null, areaSummaries = null) {
   const stats = getStats(responses);
   const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   const overallLevel = stats.avg ? Math.min(5, Math.max(1, Math.round(stats.avg))) : null;
@@ -1290,7 +1275,7 @@ function buildReportHTML(user, responses, aiSummary = null, areaSummaries = null
     </tr>`;
   }).join("");
 
-  const areaDetailPages = buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projectedScores, areaRecsAndProjections);
+  const areaDetailPages = buildAreaPages(responses, areaSummaries, C, badge, bar, stats);
 
   return `
     <style>
@@ -1553,19 +1538,17 @@ function printReport(html) { openPrintWindow(html, `${dateStamp()}_NTT_DATA_Asse
 
 // Standalone recommendations PDF — simple flat HTML, no complex layout
 
-function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSummaries, cachedAreaRecsAndProjections, onSummaryGenerated, onAreaSummariesGenerated, onAreaRecsAndProjectionsGenerated }) {
+function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSummaries, onSummaryGenerated, onAreaSummariesGenerated }) {
   const [status, setStatus] = useState("generating");
   const [errorMsg, setErrorMsg] = useState("");
   const [aiError, setAiError] = useState("");
   const [html, setHtml] = useState("");
   const summaryRef         = useRef(null);
   const areaSummariesRef   = useRef(null);
-  const areaRecsAndProjectionsRef = useRef(null);
 
-  const rebuild = (summary, areaSummaries, areaRecsAndProjections) => {
+  const rebuild = (summary, areaSummaries) => {
     try {
-      const projectedScores = extractProjectedScores(areaRecsAndProjections);
-      setHtml(buildReportHTML(user, responses, summary, areaSummaries, projectedScores, areaRecsAndProjections));
+      setHtml(buildReportHTML(user, responses, summary, areaSummaries));
     } catch (e) {
       console.error("buildReportHTML failed:", e);
       setErrorMsg(e.message || String(e));
@@ -1575,21 +1558,19 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSumm
 
   useEffect(() => {
     try {
-      setHtml(buildReportHTML(user, responses, null, null, null, null));
+      setHtml(buildReportHTML(user, responses, null, null));
     } catch (e) {
       setErrorMsg(e.message || String(e));
       setStatus("error");
       return;
     }
 
-    // If all four cached values exist, skip all API calls
-    if (cachedSummary && cachedAreaSummaries && cachedAreaRecsAndProjections) {
-      summaryRef.current                = cachedSummary;
-      areaSummariesRef.current          = cachedAreaSummaries;
-      areaRecsAndProjectionsRef.current = cachedAreaRecsAndProjections;
+    // If all cached values exist, skip all API calls
+    if (cachedSummary && cachedAreaSummaries) {
+      summaryRef.current       = cachedSummary;
+      areaSummariesRef.current = cachedAreaSummaries;
       try {
-        const projectedScores = extractProjectedScores(cachedAreaRecsAndProjections);
-        setHtml(buildReportHTML(user, responses, cachedSummary, cachedAreaSummaries, projectedScores, cachedAreaRecsAndProjections));
+        setHtml(buildReportHTML(user, responses, cachedSummary, cachedAreaSummaries));
         setStatus("ready");
       } catch (e) {
         setErrorMsg(e.message || String(e));
@@ -1600,29 +1581,22 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSumm
 
     const summaryCall      = cachedSummary                ? Promise.resolve(cachedSummary)                : generateAISummary(user, responses);
     const areaSummaryCall  = cachedAreaSummaries          ? Promise.resolve(cachedAreaSummaries)          : generateAreaSummaries(responses);
-    const recsProjectCall  = cachedAreaRecsAndProjections ? Promise.resolve(cachedAreaRecsAndProjections) : generateAllAreaRecsAndProjections(responses);
 
-    Promise.allSettled([summaryCall, areaSummaryCall, recsProjectCall]).then(([sRes, rRes, asRes, rpRes]) => {
-      const summary                = (sRes.status  === "fulfilled" && sRes.value)  ? sRes.value  : null;
-      const recs                   = (rRes.status  === "fulfilled" && rRes.value)  ? rRes.value  : null;
-      const areaSummaries          = (asRes.status === "fulfilled" && asRes.value) ? asRes.value : null;
-      const areaRecsAndProjections = (rpRes.status === "fulfilled" && rpRes.value) ? rpRes.value : null;
+    Promise.allSettled([summaryCall, areaSummaryCall]).then(([sRes, asRes]) => {
+      const summary       = (sRes.status  === "fulfilled" && sRes.value)  ? sRes.value  : null;
+      const areaSummaries = (asRes.status === "fulfilled" && asRes.value) ? asRes.value : null;
 
       if (sRes.status  === "rejected") { console.error("AI summary error:",        sRes.reason?.message  || sRes.reason); setAiError(`Summary failed: ${sRes.reason?.message || "unknown"}`); }
       if (asRes.status === "rejected") console.error("AI area summaries error:",   asRes.reason?.message || asRes.reason);
-      if (rpRes.status === "rejected") console.error("AI recs+projections error:", rpRes.reason?.message || rpRes.reason);
 
       summaryRef.current                = summary;
       areaSummariesRef.current          = areaSummaries;
-      areaRecsAndProjectionsRef.current = areaRecsAndProjections;
 
       if (summary                && !cachedSummary                && onSummaryGenerated)                onSummaryGenerated(summary);
       if (areaSummaries          && !cachedAreaSummaries          && onAreaSummariesGenerated)          onAreaSummariesGenerated(areaSummaries);
-      if (areaRecsAndProjections && !cachedAreaRecsAndProjections && onAreaRecsAndProjectionsGenerated) onAreaRecsAndProjectionsGenerated(areaRecsAndProjections);
 
       try {
-        const projectedScores = extractProjectedScores(areaRecsAndProjections);
-        setHtml(buildReportHTML(user, responses, summary, areaSummaries, projectedScores, areaRecsAndProjections));
+        setHtml(buildReportHTML(user, responses, summary, areaSummaries));
         setStatus("ready");
       } catch (e) {
         console.error("buildReportHTML (with AI) failed:", e);
@@ -1640,7 +1614,7 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSumm
 
   const handleToggle = (val) => {
     setIncludeRecs(val);
-    if (status === "ready") rebuild(summaryRef.current, areaSummariesRef.current, areaRecsAndProjectionsRef.current);
+    if (status === "ready") rebuild(summaryRef.current, areaSummariesRef.current);
   };
 
   // ── Error screen ─────────────────────────────────────────────────────────────
@@ -2138,7 +2112,6 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
   const [topicRecs, setTopicRecs] = useState(null);
   const [reportSummary, setReportSummary] = useState(null);
   const [reportAreaSummaries, setReportAreaSummaries] = useState(null);
-  const [reportAreaRecsAndProjections, setReportAreaRecsAndProjections] = useState(null);
 
   // Expose a way for Root to clear all AI cache state when scores change
   useEffect(() => {
@@ -2156,7 +2129,6 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
     (async () => {
       try { const s = await window.storage.get("dmm_report_summary");          if (s?.value) setReportSummary(s.value); } catch (e) {}
       try { const a = await window.storage.get("dmm_report_area_summaries");   if (a?.value) { const p = JSON.parse(a.value); if (p && typeof p === "object") setReportAreaSummaries(p); } } catch (e) {}
-      try { const j = await window.storage.get("dmm_report_area_recs_proj");   if (j?.value) { const p = JSON.parse(j.value); if (p && typeof p === "object") setReportAreaRecsAndProjections(p); } } catch (e) {}
     })();
   }, []);
   const stats = getStats(responses);
@@ -2253,7 +2225,6 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
           onClose={() => setShowReport(false)}
           cachedSummary={reportSummary}
           cachedAreaSummaries={reportAreaSummaries}
-          cachedAreaRecsAndProjections={reportAreaRecsAndProjections}
           onSummaryGenerated={s => {
             setReportSummary(s);
             try { window.storage.set("dmm_report_summary", s); } catch (e) {}
@@ -2261,10 +2232,6 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
           onAreaSummariesGenerated={a => {
             setReportAreaSummaries(a);
             try { window.storage.set("dmm_report_area_summaries", JSON.stringify(a)); } catch (e) {}
-          }}
-          onAreaRecsAndProjectionsGenerated={p => {
-            setReportAreaRecsAndProjections(p);
-            try { window.storage.set("dmm_report_area_recs_proj", JSON.stringify(p)); } catch (e) {}
           }}
         />
       )}
@@ -2308,7 +2275,6 @@ export default function App() {
     try { await window.storage.delete("dmm_topic_recs"); } catch (e) {}
     try { await window.storage.delete("dmm_report_summary"); } catch (e) {}
     try { await window.storage.delete("dmm_report_area_summaries"); } catch (e) {}
-    try { await window.storage.delete("dmm_report_area_recs_proj"); } catch (e) {}
     // Also clear in-memory recs in MainApp
     if (clearTopicRecsRef.current) clearTopicRecsRef.current();
   };
