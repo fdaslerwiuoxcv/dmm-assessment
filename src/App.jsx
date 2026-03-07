@@ -1770,18 +1770,30 @@ function ReportOverlay({ user, responses, onClose }) {
 
 // ─── Topic Recs Generator ─────────────────────────────────────────────────────
 async function generateTopicRecs(responses) {
-  const scoreSummary = Object.entries(AREAS).map(([aName, area]) => {
-    const topicLines = area.topics.map((topic, tIdx) => {
+  const areaSummaries = Object.entries(AREAS).map(([aName, area]) => {
+    const topicSummaries = area.topics.map((topic, tIdx) => {
+      const goalLines = topic.goals.map((goalText, gIdx) => {
+        const r = responses[rKey(aName, tIdx, "goal", gIdx)];
+        if (!r?.score) return null;
+        const lines = [`  Goal ${gIdx + 1} (score: ${r.score}/5): ${goalText}`];
+        if (r.comment)   lines.push(`    Current state: ${r.comment}`);
+        if (r.rationale) lines.push(`    AI rationale: ${r.rationale}`);
+        return lines.join("\n");
+      }).filter(Boolean);
+
+      if (goalLines.length === 0) return null;
+
       const scored = topic.goals
         .map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score)
         .filter(Boolean);
-      const avg = scored.length > 0
-        ? (scored.reduce((a, b) => a + b, 0) / scored.length).toFixed(1)
-        : null;
-      return avg ? `  - ${topic.name}: ${avg}/5` : null;
-    }).filter(Boolean).join("\n");
-    return topicLines ? `${aName}:\n${topicLines}` : null;
-  }).filter(Boolean).join("\n\n");
+      const avg = (scored.reduce((a, b) => a + b, 0) / scored.length).toFixed(1);
+
+      return `  Topic: ${topic.name} (avg ${avg}/5)\n${goalLines.join("\n")}`;
+    }).filter(Boolean);
+
+    if (topicSummaries.length === 0) return null;
+    return `${aName}:\n${topicSummaries.join("\n\n")}`;
+  }).filter(Boolean).join("\n\n---\n\n");
 
   const res = await fetch("/api/ai", {
     method: "POST",
@@ -1791,23 +1803,27 @@ async function generateTopicRecs(responses) {
       max_tokens: 2000,
       messages: [{
         role: "user",
-        content: `You are a CMMI DMM data governance consultant. Based on these topic-level maturity scores, generate one concise, specific, actionable recommendation per topic (max 15 words each).
+        content: `You are a senior CMMI DMM data governance consultant preparing targeted recommendations for a client assessment report.
 
-SCORES:
-${scoreSummary}
+Below are the assessment results organized by area and topic. For each topic you will find the individual goal scores, the assessor's description of the organization's current state, and the AI rationale that justified each score.
+
+Use this evidence to generate one specific, actionable recommendation per topic (max 20 words) that directly addresses the most critical gap revealed by the goal-level detail — not just the average score.
+
+ASSESSMENT RESULTS:
+${areaSummaries}
 
 Return ONLY a valid JSON object. No preamble or markdown. Structure:
 {
   "Area Name": {
-    "Topic Name": { "rec": "short actionable recommendation", "priority": "high|medium|low" }
+    "Topic Name": { "rec": "specific actionable recommendation grounded in the assessment evidence", "priority": "high|medium|low" }
   }
 }
 
-Priority rules: score < 1.8 → high, score < 2.5 → medium, score ≥ 2.5 → low.
-Focus each rec on the single most impactful next step for that topic's score.`
+Priority rules: avg score < 1.8 → high, < 2.5 → medium, ≥ 2.5 → low.`
       }]
     })
   });
+
   const data = await res.json();
   if (data.error) throw new Error(data.error.message);
   const raw = data.content.map(c => c.text || "").join("").trim();
