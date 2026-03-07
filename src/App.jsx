@@ -1768,16 +1768,92 @@ function ReportOverlay({ user, responses, onClose }) {
   );
 }
 
+// ─── Topic Recs Generator ─────────────────────────────────────────────────────
+async function generateTopicRecs(responses) {
+  const scoreSummary = Object.entries(AREAS).map(([aName, area]) => {
+    const topicLines = area.topics.map((topic, tIdx) => {
+      const scored = topic.goals
+        .map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score)
+        .filter(Boolean);
+      const avg = scored.length > 0
+        ? (scored.reduce((a, b) => a + b, 0) / scored.length).toFixed(1)
+        : null;
+      return avg ? `  - ${topic.name}: ${avg}/5` : null;
+    }).filter(Boolean).join("\n");
+    return topicLines ? `${aName}:\n${topicLines}` : null;
+  }).filter(Boolean).join("\n\n");
+
+  const res = await fetch("/api/ai", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 2000,
+      messages: [{
+        role: "user",
+        content: `You are a CMMI DMM data governance consultant. Based on these topic-level maturity scores, generate one concise, specific, actionable recommendation per topic (max 15 words each).
+
+SCORES:
+${scoreSummary}
+
+Return ONLY a valid JSON object. No preamble or markdown. Structure:
+{
+  "Area Name": {
+    "Topic Name": { "rec": "short actionable recommendation", "priority": "high|medium|low" }
+  }
+}
+
+Priority rules: score < 1.8 → high, score < 2.5 → medium, score ≥ 2.5 → low.
+Focus each rec on the single most impactful next step for that topic's score.`
+      }]
+    })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  const raw = data.content.map(c => c.text || "").join("").trim();
+  const clean = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+  return JSON.parse(clean);
+}
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 function Dashboard({ responses, onNavigate, user, onExport }) {
   const stats = getStats(responses);
   const overallLevel = stats.avg ? Math.round(stats.avg) : null;
   const overallCmmi = overallLevel ? CMMI[overallLevel] : null;
+  const [topicRecs, setTopicRecs] = useState(null);
+  const [recsLoading, setRecsLoading] = useState(false);
+  const [recsError, setRecsError] = useState("");
+
+  // Load cached recs from storage on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const cached = await window.storage.get("dmm_topic_recs");
+        if (cached) setTopicRecs(JSON.parse(cached.value));
+      } catch (e) {}
+    })();
+  }, []);
+
+  const handleGenerateRecs = async () => {
+    setRecsLoading(true);
+    setRecsError("");
+    try {
+      const recs = await generateTopicRecs(responses);
+      setTopicRecs(recs);
+      await window.storage.set("dmm_topic_recs", JSON.stringify(recs));
+    } catch (e) {
+      console.error("Topic recs error:", e);
+      setRecsError("Failed to generate recommendations. Please try again.");
+    } finally {
+      setRecsLoading(false);
+    }
+  };
 
   return (
     <div style={{ padding: "32px 36px", fontFamily: "'Outfit', sans-serif" }}>
       <style>{`
         @keyframes fadeIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes shimmer { 0%,100%{opacity:0.4} 50%{opacity:1} }
         .area-card { background:white; border-radius:16px; padding:20px; border:1.5px solid #F1F5F9; transition:box-shadow .2s,transform .15s; cursor:pointer; }
         .area-card:hover { box-shadow:0 8px 24px rgba(0,0,0,.08); transform:translateY(-2px); }
       `}</style>
@@ -1864,7 +1940,29 @@ function Dashboard({ responses, onNavigate, user, onExport }) {
       </div>
 
       {/* Area cards with embedded radar */}
-      <div style={{ fontSize: 13, fontWeight: 600, color: "#94A3B8", letterSpacing: 1.2, marginBottom: 14 }}>ASSESSMENT AREAS</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "#94A3B8", letterSpacing: 1.2 }}>ASSESSMENT AREAS</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {recsError && <span style={{ fontSize: 12, color: "#B22000" }}>{recsError}</span>}
+          {topicRecs && !recsLoading && (
+            <span style={{ fontSize: 11, color: "#94A3B8" }}>Recommendations cached</span>
+          )}
+          <button
+            onClick={handleGenerateRecs}
+            disabled={recsLoading || stats.scoredGoals === 0}
+            style={{ display: "flex", alignItems: "center", gap: 7, background: recsLoading ? "rgba(0,114,188,.4)" : "linear-gradient(135deg,#0072BC,#009AA4)", border: "none", borderRadius: 8, padding: "7px 14px", color: "white", fontSize: 12, fontWeight: 600, fontFamily: "inherit", cursor: recsLoading || stats.scoredGoals === 0 ? "not-allowed" : "pointer", opacity: stats.scoredGoals === 0 ? 0.4 : 1, whiteSpace: "nowrap", transition: "opacity .15s" }}
+          >
+            {recsLoading ? (
+              <>
+                <span style={{ width: 10, height: 10, border: "2px solid rgba(255,255,255,.3)", borderTop: "2px solid white", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite" }} />
+                Generating…
+              </>
+            ) : (
+              <>✦ {topicRecs ? "Refresh" : "Generate"} Recommendations</>
+            )}
+          </button>
+        </div>
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14, animation: "fadeIn .6s ease" }}>
         {Object.entries(AREAS).map(([aName, area]) => {
           const as_ = stats.areaStats[aName];
@@ -1902,6 +2000,55 @@ function Dashboard({ responses, onNavigate, user, onExport }) {
 
               {/* Topic pills */}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 10 }}>
+
+              {/* Topic Recommendations */}
+              {(topicRecs || recsLoading) && (() => {
+                const priorityConfig = {
+                  high:   { color: "#B22000", bg: "#FDECEA" },
+                  medium: { color: "#CC7700", bg: "#FFF5CC" },
+                  low:    { color: "#068941", bg: "#E0F5EC" },
+                };
+                const areaRecs = topicRecs
+                  ? (topicRecs[aName] || topicRecs[Object.keys(topicRecs).find(k => k.toLowerCase().includes(aName.toLowerCase().slice(0, 6))) || ""] || {})
+                  : {};
+                return (
+                  <div style={{ width: "100%", marginTop: 14, marginBottom: 4, display: "flex", flexDirection: "column", gap: 5 }} onClick={e => e.stopPropagation()}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "#94A3B8", letterSpacing: 1.2, marginBottom: 2 }}>TOPIC RECOMMENDATIONS</div>
+                    {area.topics.map((topic, tIdx) => {
+                      const scored = topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean);
+                      const avg = scored.length > 0 ? scored.reduce((a, b) => a + b, 0) / scored.length : null;
+                      const topicRec = areaRecs[topic.name] || areaRecs[Object.keys(areaRecs).find(k => k.toLowerCase().includes(topic.name.toLowerCase().slice(0, 6))) || ""] || null;
+                      const priority = topicRec?.priority || (avg ? (avg < 1.8 ? "high" : avg < 2.5 ? "medium" : "low") : null);
+                      const pc = priority ? priorityConfig[priority] : null;
+                      return recsLoading ? (
+                        <div key={tIdx} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, background: "#F8FAFC", border: "1px solid #F1F5F9" }}>
+                          <div style={{ width: 28, height: 8, borderRadius: 4, background: "#E2E8F0", animation: "shimmer 1.4s ease infinite" }} />
+                          <div style={{ flex: 1, height: 8, borderRadius: 4, background: "#E2E8F0", animation: "shimmer 1.4s ease infinite", animationDelay: `${tIdx * 0.1}s` }} />
+                        </div>
+                      ) : (
+                        <div key={tIdx} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "7px 10px", borderRadius: 8, background: pc ? pc.bg + "66" : "#F8FAFC", border: `1px solid ${pc ? pc.color + "22" : "#F1F5F9"}` }}>
+                          {avg && (
+                            <span style={{ fontSize: 10, fontWeight: 700, color: pc?.color || "#94A3B8", background: "white", border: `1px solid ${pc?.color || "#E2E8F0"}44`, borderRadius: 4, padding: "1px 5px", whiteSpace: "nowrap", flexShrink: 0, marginTop: 1 }}>
+                              {avg.toFixed(1)}
+                            </span>
+                          )}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 10.5, fontWeight: 600, color: "#64748B", marginBottom: 1 }}>{topic.name}</div>
+                            <div style={{ fontSize: 11.5, color: "#334155", lineHeight: 1.45 }}>
+                              {topicRec?.rec || <span style={{ color: "#94A3B8", fontStyle: "italic" }}>No scores recorded</span>}
+                            </div>
+                          </div>
+                          {pc && priority && (
+                            <span style={{ fontSize: 9.5, fontWeight: 700, color: pc.color, background: "white", border: `1px solid ${pc.color}33`, borderRadius: 4, padding: "2px 6px", flexShrink: 0, marginTop: 1, textTransform: "capitalize" }}>
+                              {priority}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
                 {area.topics.map((t, i) => {
                   const scored = t.goals.filter((_, gIdx) => responses[rKey(aName, i, "goal", gIdx)]?.score).length;
                   const topicAvg = scored > 0
@@ -2214,6 +2361,8 @@ export default function App() {
   const saveResponses = async (r) => {
     setResponses(r);
     try { await window.storage.set("dmm_responses", JSON.stringify(r)); } catch (e) {}
+    // Invalidate cached recommendations so they reflect new scores
+    try { await window.storage.delete("dmm_topic_recs"); } catch (e) {}
   };
 
   const handleLogin = async (name, org, role) => {
