@@ -1863,22 +1863,25 @@ Write the narrative with these guidelines:
 async function generateRecommendations(user, responses) {
   const stats = getStats(responses);
 
-  // Build a rich evidence dossier — every scored goal with its text, assessor comment, and AI rationale
+  // Build a focused evidence dossier.
+  // Goals scoring < 3.0 get full detail (text + assessor comment + AI rationale) — these are the primary action candidates.
+  // Goals scoring >= 3.0 get score + text only, so the model has context without bloating the prompt.
   const evidenceDossier = Object.entries(AREAS).map(([aName, area]) => {
     const topicBlocks = area.topics.map((topic, tIdx) => {
       const goalLines = topic.goals.map((goalText, gIdx) => {
         const r = responses[rKey(aName, tIdx, "goal", gIdx)];
         if (!r?.score) return null;
+        const needsDetail = r.score < 3.0;
         const lines = [`    [G${gIdx + 1}] Score ${r.score}/5 — ${goalText}`];
-        if (r.comment)   lines.push(`      Assessor comment: "${r.comment}"`);
-        if (r.rationale) lines.push(`      AI rationale: ${r.rationale}`);
+        if (needsDetail && r.comment)   lines.push(`      Assessor comment: "${r.comment}"`);
+        if (needsDetail && r.rationale) lines.push(`      AI rationale: ${r.rationale}`);
         return lines.join("\n");
       }).filter(Boolean);
 
       if (goalLines.length === 0) return null;
       const avgScores = topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean);
       const topicAvg = avgScores.length > 0 ? (avgScores.reduce((a, b) => a + b, 0) / avgScores.length).toFixed(1) : "—";
-      return `  Topic: ${topic.name} (avg ${topicAvg}/5, ${goalLines.length} goal${goalLines.length > 1 ? "s" : ""} scored)\n${goalLines.join("\n")}`;
+      return `  Topic: ${topic.name} (avg ${topicAvg}/5)\n${goalLines.join("\n")}`;
     }).filter(Boolean);
 
     if (topicBlocks.length === 0) return null;
@@ -2119,7 +2122,7 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, ca
       const areaRecsAndProjections = (rpRes.status === "fulfilled" && rpRes.value) ? rpRes.value : null;
 
       if (sRes.status  === "rejected") { console.error("AI summary error:",        sRes.reason?.message  || sRes.reason); setAiError(`Summary failed: ${sRes.reason?.message || "unknown"}`); }
-      if (rRes.status  === "rejected") console.error("AI recs error:",             rRes.reason?.message  || rRes.reason);
+      if (rRes.status  === "rejected") { console.error("AI recs error:", rRes.reason?.message || rRes.reason); setAiError(`Action Plan failed: ${rRes.reason?.message || String(rRes.reason)}`); }
       if (asRes.status === "rejected") console.error("AI area summaries error:",   asRes.reason?.message || asRes.reason);
       if (rpRes.status === "rejected") console.error("AI recs+projections error:", rpRes.reason?.message || rpRes.reason);
 
