@@ -1450,52 +1450,48 @@ function buildReportHTML(user, responses, aiSummary = null, recommendations = nu
 }
 
 // ─── Area Summaries Generator ─────────────────────────────────────────────────
-async function generateAreaSummaries(responses) {
-  const areaSections = Object.entries(AREAS).map(([aName, area]) => {
-    const topicBlocks = area.topics.map((topic, tIdx) => {
-      const goalLines = topic.goals.map((goalText, gIdx) => {
-        const r = responses[rKey(aName, tIdx, "goal", gIdx)];
-        if (!r?.score) return null;
-        const lines = [`    Goal ${gIdx + 1} (${r.score}/5): ${goalText}`];
-        if (r.comment)   lines.push(`      Current state: ${r.comment}`);
-        if (r.rationale) lines.push(`      Rationale: ${r.rationale}`);
-        return lines.join("\n");
-      }).filter(Boolean);
-      if (goalLines.length === 0) return null;
-      const scored = topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean);
-      const avg = (scored.reduce((a, b) => a + b, 0) / scored.length).toFixed(1);
-      return `  Topic: ${topic.name} (avg ${avg}/5)\n${goalLines.join("\n")}`;
+async function generateSingleAreaSummary(aName, responses) {
+  const area = AREAS[aName];
+
+  const topicBlocks = area.topics.map((topic, tIdx) => {
+    const goalLines = topic.goals.map((goalText, gIdx) => {
+      const r = responses[rKey(aName, tIdx, "goal", gIdx)];
+      if (!r?.score) return null;
+      const lines = [`    Goal ${gIdx + 1} (${r.score}/5): ${goalText}`];
+      if (r.comment)   lines.push(`      Current state: ${r.comment}`);
+      if (r.rationale) lines.push(`      Rationale: ${r.rationale}`);
+      return lines.join("\n");
     }).filter(Boolean);
-    if (topicBlocks.length === 0) return null;
-    return `${aName}:\n${topicBlocks.join("\n\n")}`;
-  }).filter(Boolean).join("\n\n===\n\n");
+    if (goalLines.length === 0) return null;
+    const scored = topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean);
+    const avg = (scored.reduce((a, b) => a + b, 0) / scored.length).toFixed(1);
+    return `  Topic: ${topic.name} (avg ${avg}/5)\n${goalLines.join("\n")}`;
+  }).filter(Boolean);
+
+  if (topicBlocks.length === 0) return null;
 
   const res = await fetch("/api/ai", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 4000,
+      max_tokens: 1000,
       messages: [{
         role: "user",
-        content: `You are a senior CMMI DMM data governance consultant authoring a formal assessment report for a client.
+        content: `You are a senior CMMI DMM data governance consultant authoring a formal assessment report.
 
-For each area and topic below, write a concise narrative paragraph (3–5 sentences) that:
+For each topic below, write a concise narrative paragraph (3–5 sentences) that:
 - Characterizes the organization's current maturity based on the goal scores and evidence
 - References specific observations from the assessor comments and AI rationales
-- Identifies the key gap or risk for that topic
-- Uses professional, authoritative language appropriate for an executive audience
-- Does NOT use bullet points, headers, or markdown — flowing prose only
+- Identifies the key gap or risk
+- Uses professional language appropriate for an executive audience
+- Flowing prose only — no bullets, headers, or markdown
 
-ASSESSMENT DATA:
-${areaSections}
+AREA: ${aName}
+${topicBlocks.join("\n\n")}
 
 Return ONLY a valid JSON object. No preamble, no markdown fences. Structure:
-{
-  "Area Name": {
-    "Topic Name": "narrative paragraph text here"
-  }
-}`
+{ "Topic Name": "narrative paragraph" }`
       }]
     })
   });
@@ -1505,6 +1501,25 @@ Return ONLY a valid JSON object. No preamble, no markdown fences. Structure:
   const raw = data.content.map(c => c.text || "").join("").trim();
   const clean = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
   return JSON.parse(clean);
+}
+
+async function generateAreaSummaries(responses) {
+  const results = await Promise.allSettled(
+    Object.keys(AREAS).map(aName =>
+      generateSingleAreaSummary(aName, responses).then(result => ({ aName, result }))
+    )
+  );
+
+  const areaSummaries = {};
+  results.forEach(r => {
+    if (r.status === "fulfilled" && r.value?.result) {
+      areaSummaries[r.value.aName] = r.value.result;
+    } else if (r.status === "rejected") {
+      console.error("Area summary failed:", r.reason?.message || r.reason);
+    }
+  });
+
+  return Object.keys(areaSummaries).length > 0 ? areaSummaries : null;
 }
 
 // ─── Report Overlay ───────────────────────────────────────────────────────────
