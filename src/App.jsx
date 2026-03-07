@@ -2126,27 +2126,8 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedRecs, ca
 
 // ─── Topic Recs Generator ─────────────────────────────────────────────────────
 
-// ─── Main App Shell ───────────────────────────────────────────────────────────
-function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment, onAnalyze, onLogout, onClearAICache }) {
-  const [activeView, setActiveView] = useState("dashboard");
-  const [showReport, setShowReport] = useState(false);
-  const [reportSummary, setReportSummary] = useState(null);
-  const [reportRecs, setReportRecs] = useState(null);
-  const [reportAreaSummaries, setReportAreaSummaries] = useState(null);
-  const [reportProjectedScores, setReportProjectedScores] = useState(null);
-
-  // Register cache-clear handler with parent
-  useEffect(() => {
-    if (onClearAICache) {
-      onClearAICache(() => {
-        setReportSummary(null);
-        setReportRecs(null);
-        setReportAreaSummaries(null);
-        setReportProjectedScores(null);
-      });
-    }
-  }, [onClearAICache]);
-
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+function Dashboard({ responses, onNavigate, user, onExport }) {
   const stats = getStats(responses);
   const overallLevel = stats.avg ? Math.round(stats.avg) : null;
   const overallCmmi = overallLevel ? CMMI[overallLevel] : null;
@@ -2286,14 +2267,13 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
-      let loadedUser = null;
       try {
         const u = await window.storage.get("dmm_user");
-        if (u) { loadedUser = JSON.parse(u.value); setUser(loadedUser); }
+        if (u) setUser(JSON.parse(u.value));
         const r = await window.storage.get("dmm_responses");
         if (r) setResponses(JSON.parse(r.value));
       } catch (e) {}
-      setScreen(loadedUser ? "app" : "login");
+      setScreen(user ? "app" : "login");
     })();
   }, []);
 
