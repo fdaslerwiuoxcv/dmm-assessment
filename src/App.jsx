@@ -2156,12 +2156,16 @@ function GoalCard({ goalNum, goalText, areaColor, responseData, onCommentChange,
         {scored && <ScoreBadge score={r.score} size="lg" />}
       </div>
 
-      {r.rationale && (
-        <div style={{ marginTop: 14, padding: "12px 16px", background: `${CMMI[r.score]?.bg}`, borderRadius: 10, borderLeft: `3px solid ${CMMI[r.score]?.color}` }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: CMMI[r.score]?.color, letterSpacing: 1, marginBottom: 5 }}>AI ASSESSMENT RATIONALE</div>
-          <p style={{ margin: 0, fontSize: 13, color: "#334155", lineHeight: 1.65 }}>{r.rationale}</p>
-        </div>
-      )}
+      {r.rationale && (() => {
+        const lvl = Math.min(5, Math.max(1, Math.round(r.score)));
+        const c = CMMI[lvl];
+        return (
+          <div style={{ marginTop: 14, padding: "12px 16px", background: `${c.bg}99`, borderRadius: 10, border: `1.5px solid ${c.color}70` }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: c.color, letterSpacing: 1, marginBottom: 5 }}>AI ASSESSMENT RATIONALE</div>
+            <p style={{ margin: 0, fontSize: 13, color: "#334155", lineHeight: 1.65 }}>{r.rationale}</p>
+          </div>
+        );
+      })()}
     </div>
   );
 }
