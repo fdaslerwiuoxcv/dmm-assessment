@@ -1594,44 +1594,70 @@ async function generateAreaSummaries(responses) {
 // ─── Report Overlay ───────────────────────────────────────────────────────────
 async function generateAISummary(user, responses) {
   const stats = getStats(responses);
-
-  // Compact digest: area averages + topic scores only (no full goal text or rationales)
-  const digest = Object.entries(AREAS).map(([aName, area]) => {
-    const ts = getTopicScores(aName, responses).filter(t => t.score > 0);
-    if (ts.length === 0) return null;
-    const avg = (ts.reduce((a, b) => a + b.score, 0) / ts.length).toFixed(1);
-    const topicLines = ts.map(t => `  • ${t.name}: ${t.score.toFixed(1)}/5`).join("\n");
-    return `${aName} (avg ${avg}/5):\n${topicLines}`;
-  }).filter(Boolean).join("\n\n");
-
   const overallAvg = stats.avg ? stats.avg.toFixed(1) : "N/A";
+
+  // Build an evidence digest: for each area, include topic scores plus the single most
+  // informative assessor comment per topic (the goal with the lowest score, which is
+  // where the most specific observations tend to live). Cap each comment at 200 chars
+  // to keep the prompt focused without losing org-specific language.
+  const digest = Object.entries(AREAS).map(([aName, area]) => {
+    const topicBlocks = area.topics.map((topic, tIdx) => {
+      const scored = topic.goals
+        .map((goalText, gIdx) => ({ goalText, gIdx, r: responses[rKey(aName, tIdx, "goal", gIdx)] }))
+        .filter(x => x.r?.score);
+      if (scored.length === 0) return null;
+
+      const topicAvg = (scored.reduce((a, x) => a + x.r.score, 0) / scored.length).toFixed(1);
+
+      // Pick the most informative goal: lowest-scored that has a comment
+      const withComment = scored.filter(x => x.r.comment?.trim());
+      const anchor = withComment.length > 0
+        ? withComment.reduce((a, b) => a.r.score <= b.r.score ? a : b)
+        : scored.reduce((a, b) => a.r.score <= b.r.score ? a : b);
+
+      const lines = [`  Topic: ${topic.name} — avg ${topicAvg}/5`];
+      if (anchor.r.comment)   lines.push(`    Key finding: "${anchor.r.comment.slice(0, 200)}${anchor.r.comment.length > 200 ? "…" : ""}"`);
+      if (anchor.r.rationale) lines.push(`    Scoring rationale: ${anchor.r.rationale.slice(0, 180)}${anchor.r.rationale.length > 180 ? "…" : ""}`);
+      return lines.join("\n");
+    }).filter(Boolean);
+
+    if (topicBlocks.length === 0) return null;
+    const areaScores = area.topics.flatMap((topic, tIdx) =>
+      topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean)
+    );
+    const areaAvg = (areaScores.reduce((a, b) => a + b, 0) / areaScores.length).toFixed(1);
+    return `${aName} (avg ${areaAvg}/5):\n${topicBlocks.join("\n")}`;
+  }).filter(Boolean).join("\n\n");
 
   const response = await fetch("/api/ai", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "claude-sonnet-4-5",
-      max_tokens: 800,
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1200,
       messages: [{
         role: "user",
-        content: `You are a senior data governance advisor preparing a formal executive assessment narrative for a client report. Based on the CMMI DMM assessment results below, write a polished 3–4 paragraph executive summary in natural language.
+        content: `You are a senior data governance advisor at NTT DATA preparing the executive summary of a formal CMMI DMM assessment report for a client sponsor.
 
 Organization: ${user.org}
 Assessor: ${user.name}${user.role ? ` (${user.role})` : ""}
 Overall Maturity Score: ${overallAvg}/5.0 (CMMI 1–5 scale)
 Goals Scored: ${stats.scoredGoals} of ${stats.totalGoals}
 
-ASSESSMENT RESULTS:
+ASSESSMENT EVIDENCE (area and topic scores with key findings from assessor interviews):
 ${digest}
 
-Write the narrative with these guidelines:
-- Open with a concise overall characterization of the organization's data management maturity
-- Highlight 2–3 relative strengths (highest scoring areas/topics) with specific supporting observations
-- Identify 2–3 priority gaps or improvement areas (lowest scoring), framing them constructively as opportunities
-- Close with a forward-looking paragraph on recommended focus areas to advance maturity
-- Use a professional, authoritative tone appropriate for a C-suite or board-level audience
-- Do NOT use bullet points, headers, or markdown — write in flowing prose paragraphs only
-- Do NOT mention CMMI level numbers directly; instead use their labels (Performed, Managed, Defined, Measured, Optimized) where relevant`
+Write a polished 4–5 paragraph executive summary. Requirements:
+- Use the organization's name (${user.org}) naturally — this must read as written specifically for this client, not as a generic template
+- Ground every observation in the evidence above — reference specific tools, processes, roles, pain points, or capabilities named in the key findings. Never make claims that cannot be traced to the evidence
+- Open with a concise characterization of the organization's overall data management maturity posture
+- Dedicate a paragraph to relative strengths — cite the highest-scoring areas and what the evidence says is working well
+- Dedicate a paragraph to the most significant gaps — name the lowest-scoring areas and the specific findings that explain why, framing them as opportunities rather than failures
+- Close with a forward-looking paragraph on the highest-priority focus areas needed to advance maturity, anchored in what the evidence revealed
+- Tone: authoritative, candid, and appropriate for a C-suite or board-level sponsor who commissioned the assessment
+- Use American English spelling throughout
+- Do NOT use bullet points, headers, numbered lists, or markdown — flowing prose paragraphs only
+- Do NOT mention CMMI level numbers directly; use the level labels (Performed, Managed, Defined, Measured, Optimized) where relevant`
       }]
     })
   });
