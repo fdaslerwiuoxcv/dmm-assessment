@@ -2266,7 +2266,6 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
     if (onClearTopicRecs) onClearTopicRecs(() => {
       setTopicRecs(null);
       setReportSummary(null);
-      setReportRecs(null);
       setReportAreaSummaries(null);
       setReportAreaRecsAndProjections(null);
     });
@@ -2277,6 +2276,7 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
     (async () => {
       try { const s = await window.storage.get("dmm_report_summary");          if (s?.value) setReportSummary(s.value); } catch (e) {}
       try { const a = await window.storage.get("dmm_report_area_summaries");   if (a?.value) { const p = JSON.parse(a.value); if (p && typeof p === "object") setReportAreaSummaries(p); } } catch (e) {}
+      try { const r = await window.storage.get("dmm_report_area_recs_proj");   if (r?.value) { const p = JSON.parse(r.value); if (p && typeof p === "object") setReportAreaRecsAndProjections(p); } } catch (e) {}
     })();
   }, []);
   const stats = getStats(responses);
@@ -2381,6 +2381,10 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
           onAreaSummariesGenerated={a => {
             setReportAreaSummaries(a);
             try { window.storage.set("dmm_report_area_summaries", JSON.stringify(a)); } catch (e) {}
+          }}
+          onAreaRecsAndProjectionsGenerated={p => {
+            setReportAreaRecsAndProjections(p);
+            try { window.storage.set("dmm_report_area_recs_proj", JSON.stringify(p)); } catch (e) {}
           }}
         />
       )}
