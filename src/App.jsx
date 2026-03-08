@@ -934,7 +934,7 @@ function ScoreBadge({ score, size = "md" }) {
   const pad = size === "lg" ? "8px 16px" : "4px 10px";
   const fs = size === "lg" ? 14 : 12;
   return (
-    <span style={{ background: c.bg, color: c.color, border: `1.5px solid ${c.color}40`, borderRadius: 20, padding: pad, fontSize: fs, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
+    <span style={{ background: c.bg, color: c.color, border: `1.5px solid ${c.color}40`, borderRadius: 20, padding: pad, fontSize: fs, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5, whiteSpace: "nowrap", minWidth: size === "lg" ? 160 : 130 }}>
       <span style={{ fontSize: size === "lg" ? 16 : 13 }}>●</span> {score.toFixed(1)} — {c.label}
     </span>
   );
@@ -1268,7 +1268,7 @@ function buildReportHTML(user, responses, aiSummary = null, areaSummaries = null
     if (!score) return `<span style="color:#94a3b8;font-size:12px;font-family:'Outfit',sans-serif;">Not scored</span>`;
     const lvl = Math.min(5, Math.max(1, Math.round(score)));
     const c = C[lvl];
-    return `<span style="background:${c.bg};color:${c.color};border:1.5px solid ${c.color}50;border-radius:20px;padding:3px 11px;font-size:12px;font-weight:700;font-family:'Outfit',sans-serif;white-space:nowrap;">${score.toFixed(1)} — ${c.label}</span>`;
+    return `<span style="background:${c.bg};color:${c.color};border:1.5px solid ${c.color}50;border-radius:20px;padding:3px 11px;font-size:12px;font-weight:700;font-family:'Outfit',sans-serif;white-space:nowrap;display:inline-block;min-width:130px;text-align:center;">${score.toFixed(1)} — ${c.label}</span>`;
   };
 
   const bar = (score, width = 100) => {
