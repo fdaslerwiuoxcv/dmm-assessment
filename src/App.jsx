@@ -1485,7 +1485,7 @@ The assessment evidence below includes goal scores, assessor interview notes, an
 
 For each topic, produce:
 1. Three to four specific, actionable recommendations that close the rubric gaps identified in the scoring rationales. Each recommendation must:
-   - Identify the specific DMM rubric criterion being targeted (e.g. "to satisfy criterion 2.3, which requires...") and explain what the org currently lacks based on the assessor evidence
+   - Ground the recommendation in the specific rubric gap and assessor evidence — but write it as a direct, natural directive without prefacing it with criterion numbers or "to satisfy criterion X.X" phrasing
    - Name the specific capability, process, tool, role, or artefact to build or fix — use the exact systems and terminology from the assessor notes (e.g. if notes mention Collibra, reference Collibra — not a generic "metadata tool")
    - Be achievable within a realistic program of work, not aspirational boilerplate
    - Read as a clear directive a data governance practitioner can act on immediately
@@ -1902,7 +1902,7 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSumm
               onClick={runAIGeneration}
               style={{ display: "flex", alignItems: "center", gap: 8, background: "linear-gradient(135deg,rgba(25,163,252,.18),rgba(0,203,148,.14))", border: "1px solid rgba(25,163,252,.35)", borderRadius: 20, padding: "5px 14px 5px 10px", cursor: "pointer", fontFamily: "inherit" }}
             >
-              <span style={{ fontSize: 14 }}>✦</span>
+              <span style={{ fontSize: 14, color: "#fff" }}>✦</span>
               <span style={{ color: "#7BCFFF", fontSize: 11, fontWeight: 700, letterSpacing: .3 }}>Generate AI Content</span>
             </button>
           )}
