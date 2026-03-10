@@ -2584,6 +2584,32 @@ export default function App() {
 
     const goalText = AREAS[area].topics[tIdx].goals[gIdx];
     const analyzeKey = `${area}__${tIdx}__${gIdx}`;
+
+    // Pre-flight: detect if comment is a verbatim or near-verbatim copy of the goal.
+    // Normalize both strings and check similarity — if the comment is essentially
+    // the goal restated, immediately assign 1.0 without an API call.
+    const normalize = s => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+    const normComment = normalize(comment);
+    const normGoal    = normalize(goalText);
+    const longer = Math.max(normComment.length, normGoal.length);
+    // Compute character overlap via longest-common-subsequence approximation:
+    // simpler: check if one contains the other, or shared word ratio is very high
+    const commentWords = new Set(normComment.split(" "));
+    const goalWords    = normGoal.split(" ");
+    const sharedWords  = goalWords.filter(w => commentWords.has(w)).length;
+    const wordOverlap  = goalWords.length > 0 ? sharedWords / goalWords.length : 0;
+
+    if (wordOverlap >= 0.85) {
+      // Comment is essentially just the goal text — no real evidence provided
+      const noEvidenceResult = {
+        score: 1.0,
+        level: "Performed",
+        rationale: "The interview response appears to be a restatement of the goal text rather than grounded organizational evidence. A score of 1.0 is assigned because no concrete practices, processes, tools, roles, or examples were provided to demonstrate that this capability is established at this organization. Please re-enter an interview response that describes what the organization actually does."
+      };
+      saveResponses({ ...responses, [k]: { ...responses[k], ...noEvidenceResult } });
+      return;
+    }
+
     setAnalyzing(analyzeKey);
 
     try {
@@ -2628,10 +2654,11 @@ INTERVIEW RESPONSE:
 ${comment}
 
 SCORING INSTRUCTIONS:
+0. EVIDENCE GATE — before scoring, ask: does the interview response contain concrete organizational evidence? Concrete evidence means specific processes, named tools or systems, team or role names, metrics, examples, or outcomes that this organization actually has in place. If the response merely restates or paraphrases the goal text without any such evidence, assign score 1.0 and explain in the rationale that no grounded evidence was provided.
 1. Identify which rubric criteria are clearly met, partially met, or not yet met based on the interview response
-2. Assign a decimal score reflecting the HIGHEST sub-criterion within the highest level where ALL criteria at that level are substantially satisfied
+2. Assign a decimal score reflecting the HIGHEST sub-criterion within the highest level where ALL criteria at that level are substantially satisfied — supported by concrete evidence in the response
 3. The score must correspond to an actual rubric criterion number (e.g. if the org meets 2.1 and 2.2 but not 2.3, score is 2.2)
-4. In your rationale, explicitly name the rubric criteria met (by number and description), quote or closely paraphrase the specific interview evidence that satisfies each one, and state which criterion the organization falls short of and why
+4. In your rationale, explicitly name the rubric criteria met (by number and description), cite the specific interview evidence that satisfies each one, and state which criterion the organization falls short of and why
 
 Use American English spelling throughout.
 
