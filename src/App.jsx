@@ -1448,6 +1448,26 @@ function buildReportHTML(user, responses, aiSummary = null, areaSummaries = null
   `;
 }
 
+// ─── Concurrency limiter ──────────────────────────────────────────────────────
+// Runs an array of async task functions with at most `limit` running at once.
+async function runWithConcurrencyLimit(tasks, limit) {
+  const results = [];
+  let idx = 0;
+  async function worker() {
+    while (idx < tasks.length) {
+      const i = idx++;
+      try {
+        results[i] = await Promise.resolve({ status: "fulfilled", value: await tasks[i]() });
+      } catch (e) {
+        results[i] = { status: "rejected", reason: e };
+      }
+    }
+  }
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, worker);
+  await Promise.all(workers);
+  return results;
+}
+
 // ─── Recs + Projections Generator ────────────────────────────────────────────
 // Single combined call per area: produces per-topic bullet recommendations AND
 // projected scores in one pass so projections are grounded in the actual recs.
@@ -1545,12 +1565,11 @@ async function generateAllAreaRecsAndProjections(responses) {
     });
   });
 
-  const results = await Promise.allSettled(
-    jobs.map(({ aName, topic, tIdx }) =>
-      generateTopicRecsAndProjection(aName, topic, tIdx, responses)
-        .then(result => ({ aName, topicName: topic.name, result }))
-    )
+  const tasks = jobs.map(({ aName, topic, tIdx }) => () =>
+    generateTopicRecsAndProjection(aName, topic, tIdx, responses)
+      .then(result => ({ aName, topicName: topic.name, result }))
   );
+  const results = await runWithConcurrencyLimit(tasks, 4);
 
   const combined = {};
   results.forEach(r => {
@@ -1635,11 +1654,10 @@ Return ONLY a valid JSON object. No preamble, no markdown fences. Structure:
 }
 
 async function generateAreaSummaries(responses) {
-  const results = await Promise.allSettled(
-    Object.keys(AREAS).map(aName =>
-      generateSingleAreaSummary(aName, responses).then(result => ({ aName, result }))
-    )
+  const summaryTasks = Object.keys(AREAS).map(aName => () =>
+    generateSingleAreaSummary(aName, responses).then(result => ({ aName, result }))
   );
+  const results = await runWithConcurrencyLimit(summaryTasks, 4);
 
   const areaSummaries = {};
   results.forEach(r => {
