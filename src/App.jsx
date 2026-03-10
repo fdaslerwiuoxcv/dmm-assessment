@@ -1447,87 +1447,67 @@ function buildReportHTML(user, responses, aiSummary = null, areaSummaries = null
 }
 
 // ─── Recs + Projections Generator ────────────────────────────────────────────
-// Single combined call per area: produces per-topic bullet recommendations AND
-// projected scores in one pass so projections are grounded in the actual recs.
+// One API call per topic (not per area) so token budgets stay well within limits
+// regardless of how many goals/topics an area has.
 
-async function generateSingleAreaRecsAndProjections(aName, responses, user) {
-  const area = AREAS[aName];
+async function generateTopicRecsAndProjection(aName, topic, tIdx, responses, user) {
   const clientName = (user && user.org) ? user.org : "the client";
+  const scored = topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean);
+  if (scored.length === 0) return null;
+  const avg = (scored.reduce((a, b) => a + b, 0) / scored.length).toFixed(1);
 
-  const topicBlocks = area.topics.map((topic, tIdx) => {
-    const scored = topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean);
-    if (scored.length === 0) return null;
-    const avg = (scored.reduce((a, b) => a + b, 0) / scored.length).toFixed(1);
-
-    const goalLines = topic.goals.map((goalText, gIdx) => {
-      const r = responses[rKey(aName, tIdx, "goal", gIdx)];
-      if (!r?.score) return null;
-      const lines = [`    Goal ${gIdx + 1} (Score ${r.score}/5): ${goalText}`];
-      if (r.comment)   lines.push(`      Assessor notes: ${r.comment}`);
-      if (r.rationale) lines.push(`      Scoring rationale: ${r.rationale}`);
-      return lines.join("\n");
-    }).filter(Boolean);
-
-    // Append the rubric criteria for this topic so the AI knows exactly what advancement requires
-    const rubricEntries = (DMM_RUBRIC[aName] || {})[topic.name] || [];
-    const rubricLines = rubricEntries.length > 0
-      ? "    DMM Rubric criteria for this topic:\n" +
-        rubricEntries.map(e => `      ${e.score}: ${e.desc}`).join("\n")
-      : "";
-
-    const block = [`Topic: ${topic.name} (current avg ${avg}/5)`, ...goalLines];
-    if (rubricLines) block.push(rubricLines);
-    return block.join("\n");
+  const goalLines = topic.goals.map((goalText, gIdx) => {
+    const r = responses[rKey(aName, tIdx, "goal", gIdx)];
+    if (!r?.score) return null;
+    const lines = [`  Goal ${gIdx + 1} (Score ${r.score}/5): ${goalText}`];
+    if (r.comment)   lines.push(`    Assessor notes: ${r.comment}`);
+    if (r.rationale) lines.push(`    Scoring rationale: ${r.rationale}`);
+    return lines.join("\n");
   }).filter(Boolean);
 
-  if (topicBlocks.length === 0) return null;
+  const rubricEntries = (DMM_RUBRIC[aName] || {})[topic.name] || [];
+  const rubricLines = rubricEntries.length > 0
+    ? "  DMM Rubric criteria:\n" + rubricEntries.map(e => `    ${e.score}: ${e.desc}`).join("\n")
+    : "";
+
+  const topicBlock = [`Topic: ${topic.name} (current avg ${avg}/5)`, ...goalLines, rubricLines].filter(Boolean).join("\n");
 
   const res = await fetch("/api/ai", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 4000,
+      max_tokens: 1200,
       messages: [{
         role: "user",
         content: `You are a senior CMMI DMM data governance consultant at NTT DATA. You have just completed stakeholder interviews and a maturity assessment at ${clientName} and are now writing the recommendations section of the findings report.
 
-For each topic, write three to four recommendations. Ground every recommendation in the specific evidence from the assessor notes and scoring rationale — the tools, systems, roles, process gaps, and terminology that came up in interviews. A good recommendation explains what to do, why it matters to ${clientName} specifically, and what business value it unlocks.
+Write three to four recommendations for the topic below. Ground every recommendation in the specific evidence from the assessor notes and scoring rationale — the tools, systems, roles, process gaps, and terminology that came up in interviews. A good recommendation explains what to do, why it matters to ${clientName} specifically, and what business value it unlocks.
 
 Tone and style rules:
 - Start each recommendation with a strong action verb (e.g. "Establish...", "Expand...", "Formalize...", "Implement..."). Never open with "${clientName} should" or any variation of that construction.
-- Weave ${clientName}'s name naturally into the body of the recommendation where it adds clarity — but only when it reads naturally, not as a formula
+- Weave ${clientName}'s name naturally into the body where it adds clarity — but only when it reads naturally, not as a formula
 - Never write "the organization" or "the client" — use ${clientName} or specific team/role names from the evidence
 - Pull exact terms from the assessor notes: if the notes mention Collibra, BCBS 239, the CDO office, Data Stewards, Azure Purview, or any other specific system or role, use those terms — do not substitute generic language
 - Do not quote or paraphrase rubric criteria; do not use "to satisfy criterion X.X" phrasing
-- Each recommendation should feel like it came from someone who sat in the room with ${clientName}'s team — specific, grounded, and written for this client alone, not a template dressed up with a name substitution
-- Vary sentence structure across recommendations so they don't read as a repeated pattern
-- Include the business value or risk implication where it naturally fits — what does this unlock, or what risk does it close?
+- Each recommendation should feel like it came from someone who sat in the room with ${clientName}'s team — specific, grounded, and written for this client alone
+- Vary sentence structure so they don't read as a repeated pattern
+- Include the business value or risk implication where it naturally fits
 
-After the recommendations, produce a projected maturity score (decimal, e.g. 2.4) achievable after implementing them:
+Also produce a projected maturity score (decimal, e.g. 2.4) achievable after implementing these recommendations:
 - Conservative: typical advancement is 0.3–0.8 points per improvement cycle
 - Never project above 5.0 or below the current score
 - If current score >= 4.0, cap projected improvement at 0.3 unless evidence clearly indicates near-readiness for next level
-- The projected score must reflect the ambition and scope of what you actually recommended
 
 Use American English spelling throughout.
 
 CLIENT: ${clientName}
 ASSESSMENT AREA: ${aName}
 
-${topicBlocks.join("\n\n")}
+${topicBlock}
 
-Return ONLY a valid JSON object. No preamble, no markdown fences, no explanation:
-{
-  "Exact Topic Name": {
-    "recs": [
-      "Recommendation 1",
-      "Recommendation 2",
-      "Recommendation 3"
-    ],
-    "projected": 2.8
-  }
-}`
+Return ONLY valid JSON. No preamble, no markdown fences:
+{"recs": ["Recommendation 1", "Recommendation 2", "Recommendation 3"], "projected": 2.8}`
       }]
     })
   });
@@ -1540,33 +1520,42 @@ Return ONLY a valid JSON object. No preamble, no markdown fences, no explanation
   try {
     parsed = JSON.parse(clean);
   } catch (e) {
-    console.error(`Recs JSON parse failed for area "${aName}" — response may have been truncated. Raw output (first 500 chars):`, raw.slice(0, 500));
+    console.error(`Recs JSON parse failed for "${aName} / ${topic.name}". Raw:`, raw.slice(0, 400));
     throw e;
   }
-
-  const validated = {};
-  Object.entries(parsed).forEach(([topicName, val]) => {
-    if (!val || !Array.isArray(val.recs)) return;
-    const n = parseFloat(val.projected);
-    validated[topicName] = {
-      recs: val.recs.filter(r => typeof r === "string" && r.trim().length > 0),
-      projected: !isNaN(n) && n >= 1.0 && n <= 5.0 ? Math.round(n * 10) / 10 : null,
-    };
-  });
-  return Object.keys(validated).length > 0 ? validated : null;
+  if (!Array.isArray(parsed.recs)) return null;
+  const n = parseFloat(parsed.projected);
+  return {
+    recs: parsed.recs.filter(r => typeof r === "string" && r.trim().length > 0),
+    projected: !isNaN(n) && n >= 1.0 && n <= 5.0 ? Math.round(n * 10) / 10 : null,
+  };
 }
 
 async function generateAllAreaRecsAndProjections(responses, user) {
+  // Build a flat list of all (aName, topic, tIdx) jobs with scored goals
+  const jobs = [];
+  Object.entries(AREAS).forEach(([aName, area]) => {
+    area.topics.forEach((topic, tIdx) => {
+      const hasScores = topic.goals.some((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score);
+      if (hasScores) jobs.push({ aName, topic, tIdx });
+    });
+  });
+
+  // Run all topic calls in parallel
   const results = await Promise.allSettled(
-    Object.keys(AREAS).map(aName =>
-      generateSingleAreaRecsAndProjections(aName, responses, user).then(result => ({ aName, result }))
+    jobs.map(({ aName, topic, tIdx }) =>
+      generateTopicRecsAndProjection(aName, topic, tIdx, responses, user)
+        .then(result => ({ aName, topicName: topic.name, result }))
     )
   );
 
+  // Assemble into { aName: { topicName: { recs, projected } } }
   const combined = {};
   results.forEach(r => {
     if (r.status === "fulfilled" && r.value?.result) {
-      combined[r.value.aName] = r.value.result;
+      const { aName, topicName, result } = r.value;
+      if (!combined[aName]) combined[aName] = {};
+      combined[aName][topicName] = result;
     } else if (r.status === "rejected") {
       console.error("Recs+projections failed for area:", r.reason?.message || r.reason);
     }
