@@ -1233,9 +1233,21 @@ function buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projecte
         : null;
 
       const areaTopicRecs = areaRecsAndProjections ? (areaRecsAndProjections[aName] || null) : null;
-      const topicRecData = areaTopicRecs
-        ? (areaTopicRecs[topic.name] || areaTopicRecs[Object.keys(areaTopicRecs).find(k => k.toLowerCase().includes(topic.name.toLowerCase().slice(0, 6))) || ""] || null)
-        : null;
+      const topicRecData = (() => {
+        if (!areaTopicRecs) return null;
+        const name = topic.name;
+        // 1. Exact match
+        if (areaTopicRecs[name]) return areaTopicRecs[name];
+        // 2. Case-insensitive exact
+        const lName = name.toLowerCase();
+        const ciKey = Object.keys(areaTopicRecs).find(k => k.toLowerCase() === lName);
+        if (ciKey) return areaTopicRecs[ciKey];
+        // 3. Full-name substring (avoids short-prefix collisions like "Data Qu...")
+        const fuzzyKey = Object.keys(areaTopicRecs).find(k =>
+          k.toLowerCase().includes(lName) || lName.includes(k.toLowerCase())
+        );
+        return fuzzyKey ? areaTopicRecs[fuzzyKey] : null;
+      })();
       const recBullets = topicRecData?.recs?.length > 0
         ? `<div style="margin-top:14px;padding-top:12px;border-top:1px solid ${area.color}18;">
             <p style="font-size:9.5px;font-weight:700;color:#94a3b8;letter-spacing:1.4px;margin:0 0 8px;font-family:'Outfit',sans-serif;text-transform:uppercase;">Recommendations</p>
@@ -1440,50 +1452,44 @@ function buildReportHTML(user, responses, aiSummary = null, areaSummaries = null
 // Single combined call per area: produces per-topic bullet recommendations AND
 // projected scores in one pass so projections are grounded in the actual recs.
 
-async function generateSingleAreaRecsAndProjections(aName, responses) {
-  const area = AREAS[aName];
+// One API call per topic keeps each request well within token limits
+// regardless of how many goals/topics an area contains.
+async function generateTopicRecsAndProjection(aName, topic, tIdx, responses) {
+  const scored = topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean);
+  if (scored.length === 0) return null;
+  const avg = (scored.reduce((a, b) => a + b, 0) / scored.length).toFixed(1);
 
-  const topicBlocks = area.topics.map((topic, tIdx) => {
-    const scored = topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean);
-    if (scored.length === 0) return null;
-    const avg = (scored.reduce((a, b) => a + b, 0) / scored.length).toFixed(1);
-
-    const goalLines = topic.goals.map((goalText, gIdx) => {
-      const r = responses[rKey(aName, tIdx, "goal", gIdx)];
-      if (!r?.score) return null;
-      const lines = [`    Goal ${gIdx + 1} (Score ${r.score}/5): ${goalText}`];
-      if (r.comment)   lines.push(`      Assessor notes: ${r.comment}`);
-      if (r.rationale) lines.push(`      Scoring rationale: ${r.rationale}`);
-      return lines.join("\n");
-    }).filter(Boolean);
-
-    // Append the rubric criteria for this topic so the AI knows exactly what advancement requires
-    const rubricEntries = (DMM_RUBRIC[aName] || {})[topic.name] || [];
-    const rubricLines = rubricEntries.length > 0
-      ? "    DMM Rubric criteria for this topic:\n" +
-        rubricEntries.map(e => `      ${e.score}: ${e.desc}`).join("\n")
-      : "";
-
-    const block = [`Topic: ${topic.name} (current avg ${avg}/5)`, ...goalLines];
-    if (rubricLines) block.push(rubricLines);
-    return block.join("\n");
+  const goalLines = topic.goals.map((goalText, gIdx) => {
+    const r = responses[rKey(aName, tIdx, "goal", gIdx)];
+    if (!r?.score) return null;
+    const lines = [`  Goal ${gIdx + 1} (Score ${r.score}/5): ${goalText}`];
+    if (r.comment)   lines.push(`    Assessor notes: ${r.comment}`);
+    if (r.rationale) lines.push(`    Scoring rationale: ${r.rationale}`);
+    return lines.join("\n");
   }).filter(Boolean);
 
-  if (topicBlocks.length === 0) return null;
+  const rubricEntries = (DMM_RUBRIC[aName] || {})[topic.name] || [];
+  const rubricLines = rubricEntries.length > 0
+    ? "  DMM Rubric criteria for this topic:\n" +
+      rubricEntries.map(e => `    ${e.score}: ${e.desc}`).join("\n")
+    : "";
+
+  const topicBlock = [`Topic: ${topic.name} (current avg ${avg}/5)`, ...goalLines, rubricLines]
+    .filter(Boolean).join("\n");
 
   const res = await fetch("/api/ai", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 2000,
+      max_tokens: 1200,
       messages: [{
         role: "user",
         content: `You are a senior CMMI DMM data governance consultant at NTT DATA authoring a formal client assessment report.
 
 The assessment evidence below includes goal scores, assessor interview notes, and scoring rationales. Each rationale identifies specific DMM rubric criteria that are met and the criterion that the organization falls short of — use this to ground every recommendation in a concrete rubric advancement gap.
 
-For each topic, produce:
+For this topic, produce:
 1. Three to four specific, actionable recommendations that close the rubric gaps identified in the scoring rationales. Each recommendation must:
    - Identify the specific DMM rubric criterion being targeted (e.g. "to satisfy criterion 2.3, which requires...") and explain what the org currently lacks based on the assessor evidence
    - Name the specific capability, process, tool, role, or artefact to build or fix — use the exact systems and terminology from the assessor notes (e.g. if notes mention Collibra, reference Collibra — not a generic "metadata tool")
@@ -1502,19 +1508,10 @@ Use American English spelling throughout.
 
 ASSESSMENT AREA: ${aName}
 
-${topicBlocks.join("\n\n")}
+${topicBlock}
 
 Return ONLY a valid JSON object. No preamble, no markdown fences, no explanation:
-{
-  "Exact Topic Name": {
-    "recs": [
-      "Specific recommendation 1",
-      "Specific recommendation 2",
-      "Specific recommendation 3"
-    ],
-    "projected": 2.8
-  }
-}`
+{"recs": ["Specific recommendation 1", "Specific recommendation 2", "Specific recommendation 3"], "projected": 2.8}`
       }]
     })
   });
@@ -1523,33 +1520,46 @@ Return ONLY a valid JSON object. No preamble, no markdown fences, no explanation
   if (data.error) throw new Error(data.error.message);
   const raw = data.content.map(c => c.text || "").join("").trim();
   const clean = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
-  const parsed = JSON.parse(clean);
-
-  const validated = {};
-  Object.entries(parsed).forEach(([topicName, val]) => {
-    if (!val || !Array.isArray(val.recs)) return;
-    const n = parseFloat(val.projected);
-    validated[topicName] = {
-      recs: val.recs.filter(r => typeof r === "string" && r.trim().length > 0),
-      projected: !isNaN(n) && n >= 1.0 && n <= 5.0 ? Math.round(n * 10) / 10 : null,
-    };
-  });
-  return Object.keys(validated).length > 0 ? validated : null;
+  let parsed;
+  try {
+    parsed = JSON.parse(clean);
+  } catch (e) {
+    console.error(`Recs JSON parse failed for "${aName} / ${topic.name}". Raw:`, raw.slice(0, 400));
+    throw e;
+  }
+  if (!Array.isArray(parsed.recs)) return null;
+  const n = parseFloat(parsed.projected);
+  return {
+    recs: parsed.recs.filter(r => typeof r === "string" && r.trim().length > 0),
+    projected: !isNaN(n) && n >= 1.0 && n <= 5.0 ? Math.round(n * 10) / 10 : null,
+  };
 }
 
 async function generateAllAreaRecsAndProjections(responses) {
+  // Flatten to one job per scored topic across all areas
+  const jobs = [];
+  Object.entries(AREAS).forEach(([aName, area]) => {
+    area.topics.forEach((topic, tIdx) => {
+      const hasScores = topic.goals.some((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score);
+      if (hasScores) jobs.push({ aName, topic, tIdx });
+    });
+  });
+
   const results = await Promise.allSettled(
-    Object.keys(AREAS).map(aName =>
-      generateSingleAreaRecsAndProjections(aName, responses).then(result => ({ aName, result }))
+    jobs.map(({ aName, topic, tIdx }) =>
+      generateTopicRecsAndProjection(aName, topic, tIdx, responses)
+        .then(result => ({ aName, topicName: topic.name, result }))
     )
   );
 
   const combined = {};
   results.forEach(r => {
     if (r.status === "fulfilled" && r.value?.result) {
-      combined[r.value.aName] = r.value.result;
+      const { aName, topicName, result } = r.value;
+      if (!combined[aName]) combined[aName] = {};
+      combined[aName][topicName] = result;
     } else if (r.status === "rejected") {
-      console.error("Recs+projections failed for area:", r.reason?.message || r.reason);
+      console.error("Recs+projections failed for topic:", r.reason?.message || r.reason);
     }
   });
   return Object.keys(combined).length > 0 ? combined : null;
