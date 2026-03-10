@@ -1440,8 +1440,9 @@ function buildReportHTML(user, responses, aiSummary = null, areaSummaries = null
 // Single combined call per area: produces per-topic bullet recommendations AND
 // projected scores in one pass so projections are grounded in the actual recs.
 
-async function generateSingleAreaRecsAndProjections(aName, responses) {
+async function generateSingleAreaRecsAndProjections(aName, responses, user) {
   const area = AREAS[aName];
+  const clientName = (user && user.org) ? user.org : "the client";
 
   const topicBlocks = area.topics.map((topic, tIdx) => {
     const scored = topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean);
@@ -1479,20 +1480,20 @@ async function generateSingleAreaRecsAndProjections(aName, responses) {
       max_tokens: 2000,
       messages: [{
         role: "user",
-        content: `You are a senior CMMI DMM data governance consultant at NTT DATA authoring a formal client assessment report.
+        content: `You are a senior CMMI DMM data governance consultant at NTT DATA authoring a formal assessment report for ${clientName}.
 
-The assessment evidence below includes goal scores, assessor interview notes, and scoring rationales. Each rationale identifies specific DMM rubric criteria that are met and the criterion that the organization falls short of — use this to ground every recommendation in a concrete rubric advancement gap.
+The assessment evidence below includes goal scores, assessor interview notes, and scoring rationales grounded in the DMM rubric. Use this evidence to write recommendations that are unmistakably specific to ${clientName}'s situation.
 
 For each topic, produce:
-1. Three to four specific, actionable recommendations that close the rubric gaps identified in the scoring rationales. Each recommendation must:
-   - Ground the recommendation in the specific rubric gap and assessor evidence — but write it as a direct, natural directive without prefacing it with criterion numbers or "to satisfy criterion X.X" phrasing
-   - Name the specific capability, process, tool, role, or artefact to build or fix — use the exact systems and terminology from the assessor notes (e.g. if notes mention Collibra, reference Collibra — not a generic "metadata tool")
+1. Three to four specific, actionable recommendations. Each recommendation must:
+   - Refer to ${clientName} by name — never write "the organization" or "the client"
+   - Be directly traceable to the assessor notes and scoring rationale: reference the specific tools, systems, roles, processes, domains, and gaps named in the evidence (e.g. if the notes mention Collibra, Informatica, Azure, BCBS 239, the CDO, or Data Stewards — use those exact terms, not generic substitutes)
+   - Read as a natural, concrete directive — not a paraphrase of the rubric; do not use "to satisfy criterion X.X" phrasing or quote rubric language
    - Be achievable within a realistic program of work, not aspirational boilerplate
-   - Read as a clear directive a data governance practitioner can act on immediately
-   Do NOT write generic recommendations. Every recommendation must be directly traceable to a rubric criterion gap and the assessor evidence.
+   - Sound like it was written by a consultant who interviewed ${clientName}'s team — not a template that could apply to any organization
 
 2. A projected maturity score (decimal, e.g. 2.4) achievable after implementing these recommendations. Rules:
-   - Express as the highest rubric sub-criterion (e.g. 2.4, 3.2) the org would reach after acting on the recommendations
+   - Express as the highest rubric sub-criterion (e.g. 2.4, 3.2) ${clientName} would reach after acting on the recommendations
    - Conservative: typical advancement is 0.3–0.8 points per improvement cycle
    - Never project above 5.0 or below the current score
    - If current score >= 4.0, cap projected improvement at 0.3 unless evidence clearly indicates near-readiness for next level
@@ -1500,6 +1501,7 @@ For each topic, produce:
 
 Use American English spelling throughout.
 
+CLIENT: ${clientName}
 ASSESSMENT AREA: ${aName}
 
 ${topicBlocks.join("\n\n")}
@@ -1537,10 +1539,10 @@ Return ONLY a valid JSON object. No preamble, no markdown fences, no explanation
   return Object.keys(validated).length > 0 ? validated : null;
 }
 
-async function generateAllAreaRecsAndProjections(responses) {
+async function generateAllAreaRecsAndProjections(responses, user) {
   const results = await Promise.allSettled(
     Object.keys(AREAS).map(aName =>
-      generateSingleAreaRecsAndProjections(aName, responses).then(result => ({ aName, result }))
+      generateSingleAreaRecsAndProjections(aName, responses, user).then(result => ({ aName, result }))
     )
   );
 
@@ -1809,7 +1811,7 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSumm
 
     const summaryCall     = cachedSummary                ? Promise.resolve(cachedSummary)                : generateAISummary(user, responses);
     const areaSummaryCall = cachedAreaSummaries          ? Promise.resolve(cachedAreaSummaries)          : generateAreaSummaries(responses);
-    const recsProjectCall = cachedAreaRecsAndProjections ? Promise.resolve(cachedAreaRecsAndProjections) : generateAllAreaRecsAndProjections(responses);
+    const recsProjectCall = cachedAreaRecsAndProjections ? Promise.resolve(cachedAreaRecsAndProjections) : generateAllAreaRecsAndProjections(responses, user);
 
     Promise.allSettled([summaryCall, areaSummaryCall, recsProjectCall]).then(([sRes, asRes, rpRes]) => {
       const summary                = (sRes.status  === "fulfilled" && sRes.value)  ? sRes.value  : null;
