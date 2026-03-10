@@ -1233,9 +1233,19 @@ function buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projecte
         : null;
 
       const areaTopicRecs = areaRecsAndProjections ? (areaRecsAndProjections[aName] || null) : null;
-      const topicRecData = areaTopicRecs
-        ? (areaTopicRecs[topic.name] || areaTopicRecs[Object.keys(areaTopicRecs).find(k => k.toLowerCase().includes(topic.name.toLowerCase().slice(0, 6))) || ""] || null)
-        : null;
+      const topicRecData = (() => {
+        if (!areaTopicRecs) return null;
+        const name = topic.name;
+        // 1. Exact match
+        if (areaTopicRecs[name]) return areaTopicRecs[name];
+        // 2. Case-insensitive exact match
+        const lName = name.toLowerCase();
+        const ciKey = Object.keys(areaTopicRecs).find(k => k.toLowerCase() === lName);
+        if (ciKey) return areaTopicRecs[ciKey];
+        // 3. Fuzzy: AI key contains the full topic name (case-insensitive)
+        const fuzzyKey = Object.keys(areaTopicRecs).find(k => k.toLowerCase().includes(lName) || lName.includes(k.toLowerCase()));
+        return fuzzyKey ? areaTopicRecs[fuzzyKey] : null;
+      })();
       const recBullets = topicRecData?.recs?.length > 0
         ? `<div style="margin-top:14px;padding-top:12px;border-top:1px solid ${area.color}18;">
             <p style="font-size:9.5px;font-weight:700;color:#94a3b8;letter-spacing:1.4px;margin:0 0 8px;font-family:'Outfit',sans-serif;text-transform:uppercase;">Recommendations</p>
@@ -1477,7 +1487,7 @@ async function generateSingleAreaRecsAndProjections(aName, responses, user) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 2000,
+      max_tokens: 4000,
       messages: [{
         role: "user",
         content: `You are a senior CMMI DMM data governance consultant at NTT DATA. You have just completed stakeholder interviews and a maturity assessment at ${clientName} and are now writing the recommendations section of the findings report.
@@ -1526,7 +1536,13 @@ Return ONLY a valid JSON object. No preamble, no markdown fences, no explanation
   if (data.error) throw new Error(data.error.message);
   const raw = data.content.map(c => c.text || "").join("").trim();
   const clean = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
-  const parsed = JSON.parse(clean);
+  let parsed;
+  try {
+    parsed = JSON.parse(clean);
+  } catch (e) {
+    console.error(`Recs JSON parse failed for area "${aName}" — response may have been truncated. Raw output (first 500 chars):`, raw.slice(0, 500));
+    throw e;
+  }
 
   const validated = {};
   Object.entries(parsed).forEach(([topicName, val]) => {
