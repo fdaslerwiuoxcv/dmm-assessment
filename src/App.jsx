@@ -1480,24 +1480,25 @@ async function generateSingleAreaRecsAndProjections(aName, responses, user) {
       max_tokens: 2000,
       messages: [{
         role: "user",
-        content: `You are a senior CMMI DMM data governance consultant at NTT DATA authoring a formal assessment report for ${clientName}.
+        content: `You are a senior CMMI DMM data governance consultant at NTT DATA. You have just completed stakeholder interviews and a maturity assessment at ${clientName} and are now writing the recommendations section of the findings report.
 
-The assessment evidence below includes goal scores, assessor interview notes, and scoring rationales grounded in the DMM rubric. Use this evidence to write recommendations that are unmistakably specific to ${clientName}'s situation.
+For each topic, write three to four recommendations. Ground every recommendation in the specific evidence from the assessor notes and scoring rationale — the tools, systems, roles, process gaps, and terminology that came up in interviews. A good recommendation explains what to do, why it matters to ${clientName} specifically, and what business value it unlocks.
 
-For each topic, produce:
-1. Three to four specific, actionable recommendations. Each recommendation must:
-   - Refer to ${clientName} by name — never write "the organization" or "the client"
-   - Be directly traceable to the assessor notes and scoring rationale: reference the specific tools, systems, roles, processes, domains, and gaps named in the evidence (e.g. if the notes mention Collibra, Informatica, Azure, BCBS 239, the CDO, or Data Stewards — use those exact terms, not generic substitutes)
-   - Read as a natural, concrete directive — not a paraphrase of the rubric; do not use "to satisfy criterion X.X" phrasing or quote rubric language
-   - Be achievable within a realistic program of work, not aspirational boilerplate
-   - Sound like it was written by a consultant who interviewed ${clientName}'s team — not a template that could apply to any organization
+Tone and style rules:
+- Start each recommendation with a strong action verb (e.g. "Establish...", "Expand...", "Formalize...", "Implement..."). Never open with "${clientName} should" or any variation of that construction.
+- Weave ${clientName}'s name naturally into the body of the recommendation where it adds clarity — but only when it reads naturally, not as a formula
+- Never write "the organization" or "the client" — use ${clientName} or specific team/role names from the evidence
+- Pull exact terms from the assessor notes: if the notes mention Collibra, BCBS 239, the CDO office, Data Stewards, Azure Purview, or any other specific system or role, use those terms — do not substitute generic language
+- Do not quote or paraphrase rubric criteria; do not use "to satisfy criterion X.X" phrasing
+- Each recommendation should feel like it came from someone who sat in the room with ${clientName}'s team — specific, grounded, and written for this client alone, not a template dressed up with a name substitution
+- Vary sentence structure across recommendations so they don't read as a repeated pattern
+- Include the business value or risk implication where it naturally fits — what does this unlock, or what risk does it close?
 
-2. A projected maturity score (decimal, e.g. 2.4) achievable after implementing these recommendations. Rules:
-   - Express as the highest rubric sub-criterion (e.g. 2.4, 3.2) ${clientName} would reach after acting on the recommendations
-   - Conservative: typical advancement is 0.3–0.8 points per improvement cycle
-   - Never project above 5.0 or below the current score
-   - If current score >= 4.0, cap projected improvement at 0.3 unless evidence clearly indicates near-readiness for next level
-   - The projected score must be consistent with the ambition and scope of the recommendations you wrote
+After the recommendations, produce a projected maturity score (decimal, e.g. 2.4) achievable after implementing them:
+- Conservative: typical advancement is 0.3–0.8 points per improvement cycle
+- Never project above 5.0 or below the current score
+- If current score >= 4.0, cap projected improvement at 0.3 unless evidence clearly indicates near-readiness for next level
+- The projected score must reflect the ambition and scope of what you actually recommended
 
 Use American English spelling throughout.
 
@@ -1510,9 +1511,9 @@ Return ONLY a valid JSON object. No preamble, no markdown fences, no explanation
 {
   "Exact Topic Name": {
     "recs": [
-      "Specific recommendation 1",
-      "Specific recommendation 2",
-      "Specific recommendation 3"
+      "Recommendation 1",
+      "Recommendation 2",
+      "Recommendation 3"
     ],
     "projected": 2.8
   }
