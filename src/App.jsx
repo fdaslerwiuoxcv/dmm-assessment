@@ -1233,19 +1233,9 @@ function buildAreaPages(responses, areaSummaries, C, badge, bar, stats, projecte
         : null;
 
       const areaTopicRecs = areaRecsAndProjections ? (areaRecsAndProjections[aName] || null) : null;
-      const topicRecData = (() => {
-        if (!areaTopicRecs) return null;
-        const name = topic.name;
-        // 1. Exact match
-        if (areaTopicRecs[name]) return areaTopicRecs[name];
-        // 2. Case-insensitive exact match
-        const lName = name.toLowerCase();
-        const ciKey = Object.keys(areaTopicRecs).find(k => k.toLowerCase() === lName);
-        if (ciKey) return areaTopicRecs[ciKey];
-        // 3. Fuzzy: AI key contains the full topic name (case-insensitive)
-        const fuzzyKey = Object.keys(areaTopicRecs).find(k => k.toLowerCase().includes(lName) || lName.includes(k.toLowerCase()));
-        return fuzzyKey ? areaTopicRecs[fuzzyKey] : null;
-      })();
+      const topicRecData = areaTopicRecs
+        ? (areaTopicRecs[topic.name] || areaTopicRecs[Object.keys(areaTopicRecs).find(k => k.toLowerCase().includes(topic.name.toLowerCase().slice(0, 6))) || ""] || null)
+        : null;
       const recBullets = topicRecData?.recs?.length > 0
         ? `<div style="margin-top:14px;padding-top:12px;border-top:1px solid ${area.color}18;">
             <p style="font-size:9.5px;font-weight:700;color:#94a3b8;letter-spacing:1.4px;margin:0 0 8px;font-family:'Outfit',sans-serif;text-transform:uppercase;">Recommendations</p>
@@ -1447,67 +1437,84 @@ function buildReportHTML(user, responses, aiSummary = null, areaSummaries = null
 }
 
 // ─── Recs + Projections Generator ────────────────────────────────────────────
-// One API call per topic (not per area) so token budgets stay well within limits
-// regardless of how many goals/topics an area has.
+// Single combined call per area: produces per-topic bullet recommendations AND
+// projected scores in one pass so projections are grounded in the actual recs.
 
-async function generateTopicRecsAndProjection(aName, topic, tIdx, responses, user) {
-  const clientName = (user && user.org) ? user.org : "the client";
-  const scored = topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean);
-  if (scored.length === 0) return null;
-  const avg = (scored.reduce((a, b) => a + b, 0) / scored.length).toFixed(1);
+async function generateSingleAreaRecsAndProjections(aName, responses) {
+  const area = AREAS[aName];
 
-  const goalLines = topic.goals.map((goalText, gIdx) => {
-    const r = responses[rKey(aName, tIdx, "goal", gIdx)];
-    if (!r?.score) return null;
-    const lines = [`  Goal ${gIdx + 1} (Score ${r.score}/5): ${goalText}`];
-    if (r.comment)   lines.push(`    Assessor notes: ${r.comment}`);
-    if (r.rationale) lines.push(`    Scoring rationale: ${r.rationale}`);
-    return lines.join("\n");
+  const topicBlocks = area.topics.map((topic, tIdx) => {
+    const scored = topic.goals.map((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score).filter(Boolean);
+    if (scored.length === 0) return null;
+    const avg = (scored.reduce((a, b) => a + b, 0) / scored.length).toFixed(1);
+
+    const goalLines = topic.goals.map((goalText, gIdx) => {
+      const r = responses[rKey(aName, tIdx, "goal", gIdx)];
+      if (!r?.score) return null;
+      const lines = [`    Goal ${gIdx + 1} (Score ${r.score}/5): ${goalText}`];
+      if (r.comment)   lines.push(`      Assessor notes: ${r.comment}`);
+      if (r.rationale) lines.push(`      Scoring rationale: ${r.rationale}`);
+      return lines.join("\n");
+    }).filter(Boolean);
+
+    // Append the rubric criteria for this topic so the AI knows exactly what advancement requires
+    const rubricEntries = (DMM_RUBRIC[aName] || {})[topic.name] || [];
+    const rubricLines = rubricEntries.length > 0
+      ? "    DMM Rubric criteria for this topic:\n" +
+        rubricEntries.map(e => `      ${e.score}: ${e.desc}`).join("\n")
+      : "";
+
+    const block = [`Topic: ${topic.name} (current avg ${avg}/5)`, ...goalLines];
+    if (rubricLines) block.push(rubricLines);
+    return block.join("\n");
   }).filter(Boolean);
 
-  const rubricEntries = (DMM_RUBRIC[aName] || {})[topic.name] || [];
-  const rubricLines = rubricEntries.length > 0
-    ? "  DMM Rubric criteria:\n" + rubricEntries.map(e => `    ${e.score}: ${e.desc}`).join("\n")
-    : "";
-
-  const topicBlock = [`Topic: ${topic.name} (current avg ${avg}/5)`, ...goalLines, rubricLines].filter(Boolean).join("\n");
+  if (topicBlocks.length === 0) return null;
 
   const res = await fetch("/api/ai", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 1200,
+      max_tokens: 2000,
       messages: [{
         role: "user",
-        content: `You are a senior CMMI DMM data governance consultant at NTT DATA. You have just completed stakeholder interviews and a maturity assessment at ${clientName} and are now writing the recommendations section of the findings report.
+        content: `You are a senior CMMI DMM data governance consultant at NTT DATA authoring a formal client assessment report.
 
-Write three to four recommendations for the topic below. Ground every recommendation in the specific evidence from the assessor notes and scoring rationale — the tools, systems, roles, process gaps, and terminology that came up in interviews. A good recommendation explains what to do, why it matters to ${clientName} specifically, and what business value it unlocks.
+The assessment evidence below includes goal scores, assessor interview notes, and scoring rationales. Each rationale identifies specific DMM rubric criteria that are met and the criterion that the organization falls short of — use this to ground every recommendation in a concrete rubric advancement gap.
 
-Tone and style rules:
-- Start each recommendation with a strong action verb (e.g. "Establish...", "Expand...", "Formalize...", "Implement..."). Never open with "${clientName} should" or any variation of that construction.
-- Weave ${clientName}'s name naturally into the body where it adds clarity — but only when it reads naturally, not as a formula
-- Never write "the organization" or "the client" — use ${clientName} or specific team/role names from the evidence
-- Pull exact terms from the assessor notes: if the notes mention Collibra, BCBS 239, the CDO office, Data Stewards, Azure Purview, or any other specific system or role, use those terms — do not substitute generic language
-- Do not quote or paraphrase rubric criteria; do not use "to satisfy criterion X.X" phrasing
-- Each recommendation should feel like it came from someone who sat in the room with ${clientName}'s team — specific, grounded, and written for this client alone
-- Vary sentence structure so they don't read as a repeated pattern
-- Include the business value or risk implication where it naturally fits
+For each topic, produce:
+1. Three to four specific, actionable recommendations that close the rubric gaps identified in the scoring rationales. Each recommendation must:
+   - Identify the specific DMM rubric criterion being targeted (e.g. "to satisfy criterion 2.3, which requires...") and explain what the org currently lacks based on the assessor evidence
+   - Name the specific capability, process, tool, role, or artefact to build or fix — use the exact systems and terminology from the assessor notes (e.g. if notes mention Collibra, reference Collibra — not a generic "metadata tool")
+   - Be achievable within a realistic program of work, not aspirational boilerplate
+   - Read as a clear directive a data governance practitioner can act on immediately
+   Do NOT write generic recommendations. Every recommendation must be directly traceable to a rubric criterion gap and the assessor evidence.
 
-Also produce a projected maturity score (decimal, e.g. 2.4) achievable after implementing these recommendations:
-- Conservative: typical advancement is 0.3–0.8 points per improvement cycle
-- Never project above 5.0 or below the current score
-- If current score >= 4.0, cap projected improvement at 0.3 unless evidence clearly indicates near-readiness for next level
+2. A projected maturity score (decimal, e.g. 2.4) achievable after implementing these recommendations. Rules:
+   - Express as the highest rubric sub-criterion (e.g. 2.4, 3.2) the org would reach after acting on the recommendations
+   - Conservative: typical advancement is 0.3–0.8 points per improvement cycle
+   - Never project above 5.0 or below the current score
+   - If current score >= 4.0, cap projected improvement at 0.3 unless evidence clearly indicates near-readiness for next level
+   - The projected score must be consistent with the ambition and scope of the recommendations you wrote
 
 Use American English spelling throughout.
 
-CLIENT: ${clientName}
 ASSESSMENT AREA: ${aName}
 
-${topicBlock}
+${topicBlocks.join("\n\n")}
 
-Return ONLY valid JSON. No preamble, no markdown fences:
-{"recs": ["Recommendation 1", "Recommendation 2", "Recommendation 3"], "projected": 2.8}`
+Return ONLY a valid JSON object. No preamble, no markdown fences, no explanation:
+{
+  "Exact Topic Name": {
+    "recs": [
+      "Specific recommendation 1",
+      "Specific recommendation 2",
+      "Specific recommendation 3"
+    ],
+    "projected": 2.8
+  }
+}`
       }]
     })
   });
@@ -1516,46 +1523,31 @@ Return ONLY valid JSON. No preamble, no markdown fences:
   if (data.error) throw new Error(data.error.message);
   const raw = data.content.map(c => c.text || "").join("").trim();
   const clean = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
-  let parsed;
-  try {
-    parsed = JSON.parse(clean);
-  } catch (e) {
-    console.error(`Recs JSON parse failed for "${aName} / ${topic.name}". Raw:`, raw.slice(0, 400));
-    throw e;
-  }
-  if (!Array.isArray(parsed.recs)) return null;
-  const n = parseFloat(parsed.projected);
-  return {
-    recs: parsed.recs.filter(r => typeof r === "string" && r.trim().length > 0),
-    projected: !isNaN(n) && n >= 1.0 && n <= 5.0 ? Math.round(n * 10) / 10 : null,
-  };
+  const parsed = JSON.parse(clean);
+
+  const validated = {};
+  Object.entries(parsed).forEach(([topicName, val]) => {
+    if (!val || !Array.isArray(val.recs)) return;
+    const n = parseFloat(val.projected);
+    validated[topicName] = {
+      recs: val.recs.filter(r => typeof r === "string" && r.trim().length > 0),
+      projected: !isNaN(n) && n >= 1.0 && n <= 5.0 ? Math.round(n * 10) / 10 : null,
+    };
+  });
+  return Object.keys(validated).length > 0 ? validated : null;
 }
 
-async function generateAllAreaRecsAndProjections(responses, user) {
-  // Build a flat list of all (aName, topic, tIdx) jobs with scored goals
-  const jobs = [];
-  Object.entries(AREAS).forEach(([aName, area]) => {
-    area.topics.forEach((topic, tIdx) => {
-      const hasScores = topic.goals.some((_, gIdx) => responses[rKey(aName, tIdx, "goal", gIdx)]?.score);
-      if (hasScores) jobs.push({ aName, topic, tIdx });
-    });
-  });
-
-  // Run all topic calls in parallel
+async function generateAllAreaRecsAndProjections(responses) {
   const results = await Promise.allSettled(
-    jobs.map(({ aName, topic, tIdx }) =>
-      generateTopicRecsAndProjection(aName, topic, tIdx, responses, user)
-        .then(result => ({ aName, topicName: topic.name, result }))
+    Object.keys(AREAS).map(aName =>
+      generateSingleAreaRecsAndProjections(aName, responses).then(result => ({ aName, result }))
     )
   );
 
-  // Assemble into { aName: { topicName: { recs, projected } } }
   const combined = {};
   results.forEach(r => {
     if (r.status === "fulfilled" && r.value?.result) {
-      const { aName, topicName, result } = r.value;
-      if (!combined[aName]) combined[aName] = {};
-      combined[aName][topicName] = result;
+      combined[r.value.aName] = r.value.result;
     } else if (r.status === "rejected") {
       console.error("Recs+projections failed for area:", r.reason?.message || r.reason);
     }
@@ -1763,7 +1755,7 @@ function printReport(html) { openPrintWindow(html, `${dateStamp()}_NTT_DATA_Asse
 // Standalone recommendations PDF — simple flat HTML, no complex layout
 
 function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSummaries, cachedAreaRecsAndProjections, onSummaryGenerated, onAreaSummariesGenerated, onAreaRecsAndProjectionsGenerated }) {
-  const [status, setStatus] = useState("idle");
+  const [status, setStatus] = useState("generating");
   const [errorMsg, setErrorMsg] = useState("");
   const [aiError, setAiError] = useState("");
   const [html, setHtml] = useState("");
@@ -1783,7 +1775,6 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSumm
   };
 
   useEffect(() => {
-    // Build static shell immediately so the report is visible on open
     try {
       setHtml(buildReportHTML(user, responses, null, null));
     } catch (e) {
@@ -1792,10 +1783,10 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSumm
       return;
     }
 
-    // If fully cached, render complete report right away — no button needed
+    // If all cached values exist, skip all API calls
     if (cachedSummary && cachedAreaSummaries && cachedAreaRecsAndProjections) {
-      summaryRef.current                = cachedSummary;
-      areaSummariesRef.current          = cachedAreaSummaries;
+      summaryRef.current              = cachedSummary;
+      areaSummariesRef.current        = cachedAreaSummaries;
       areaRecsAndProjectionsRef.current = cachedAreaRecsAndProjections;
       try {
         const projectedScores = extractProjectedScores(cachedAreaRecsAndProjections);
@@ -1805,19 +1796,12 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSumm
         setErrorMsg(e.message || String(e));
         setStatus("error");
       }
+      return;
     }
-    // Otherwise stay "idle" — user must click Generate AI Content
 
-    return () => { const el = document.getElementById("dmm-print-style"); if (el) el.remove(); };
-  }, []);
-
-  const runAIGeneration = () => {
-    setStatus("generating");
-    setAiError("");
-
-    const summaryCall     = cachedSummary                ? Promise.resolve(cachedSummary)                : generateAISummary(user, responses);
-    const areaSummaryCall = cachedAreaSummaries          ? Promise.resolve(cachedAreaSummaries)          : generateAreaSummaries(responses);
-    const recsProjectCall = cachedAreaRecsAndProjections ? Promise.resolve(cachedAreaRecsAndProjections) : generateAllAreaRecsAndProjections(responses, user);
+    const summaryCall      = cachedSummary                ? Promise.resolve(cachedSummary)                : generateAISummary(user, responses);
+    const areaSummaryCall  = cachedAreaSummaries          ? Promise.resolve(cachedAreaSummaries)          : generateAreaSummaries(responses);
+    const recsProjectCall  = cachedAreaRecsAndProjections ? Promise.resolve(cachedAreaRecsAndProjections) : generateAllAreaRecsAndProjections(responses);
 
     Promise.allSettled([summaryCall, areaSummaryCall, recsProjectCall]).then(([sRes, asRes, rpRes]) => {
       const summary                = (sRes.status  === "fulfilled" && sRes.value)  ? sRes.value  : null;
@@ -1828,13 +1812,13 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSumm
       if (asRes.status === "rejected") console.error("AI area summaries error:",   asRes.reason?.message || asRes.reason);
       if (rpRes.status === "rejected") console.error("AI recs+projections error:", rpRes.reason?.message || rpRes.reason);
 
-      summaryRef.current                = summary;
-      areaSummariesRef.current          = areaSummaries;
-      areaRecsAndProjectionsRef.current = areaRecsAndProjections;
+      summaryRef.current                  = summary;
+      areaSummariesRef.current            = areaSummaries;
+      areaRecsAndProjectionsRef.current   = areaRecsAndProjections;
 
-      if (summary                && !cachedSummary                && onSummaryGenerated)                 onSummaryGenerated(summary);
-      if (areaSummaries          && !cachedAreaSummaries          && onAreaSummariesGenerated)           onAreaSummariesGenerated(areaSummaries);
-      if (areaRecsAndProjections && !cachedAreaRecsAndProjections && onAreaRecsAndProjectionsGenerated) onAreaRecsAndProjectionsGenerated(areaRecsAndProjections);
+      if (summary                && !cachedSummary                && onSummaryGenerated)                   onSummaryGenerated(summary);
+      if (areaSummaries          && !cachedAreaSummaries          && onAreaSummariesGenerated)             onAreaSummariesGenerated(areaSummaries);
+      if (areaRecsAndProjections && !cachedAreaRecsAndProjections && onAreaRecsAndProjectionsGenerated)   onAreaRecsAndProjectionsGenerated(areaRecsAndProjections);
 
       try {
         const projectedScores = extractProjectedScores(areaRecsAndProjections);
@@ -1850,7 +1834,9 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSumm
       setErrorMsg(e.message || String(e));
       setStatus("error");
     });
-  };
+
+    return () => { const el = document.getElementById("dmm-print-style"); if (el) el.remove(); };
+  }, []);
 
   const handleToggle = (val) => {
     setIncludeRecs(val);
@@ -1874,7 +1860,7 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSumm
           <p style={{ margin: "0 0 24px", color: "#94a3b8", fontSize: 12, lineHeight: 1.7 }}>Open your browser's Developer Tools (F12 → Console tab) for full details. Confirm your Anthropic API key was set correctly when the app was built — see Step 4c of the deployment guide.</p>
           <div style={{ display: "flex", gap: 10 }}>
             <button
-              onClick={() => { setStatus("idle"); setErrorMsg(""); }}
+              onClick={() => { setStatus("generating"); setErrorMsg(""); setHtml(""); }}
               style={{ background: "linear-gradient(135deg,#0072BC,#009AA4)", border: "none", borderRadius: 9, padding: "10px 22px", color: "white", fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}
             >↺ Try Again</button>
             <button
@@ -1905,15 +1891,6 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSumm
           <NttLogoWhite height={20} />
           <div style={{ width: 1, height: 18, background: "rgba(255,255,255,.15)" }} />
           <span style={{ color: "#7BCFFF", fontSize: 11, fontWeight: 700, letterSpacing: 2 }}>REPORT PREVIEW</span>
-          {status === "idle" && (
-            <button
-              onClick={runAIGeneration}
-              style={{ display: "flex", alignItems: "center", gap: 8, background: "linear-gradient(135deg,rgba(25,163,252,.18),rgba(0,203,148,.14))", border: "1px solid rgba(25,163,252,.35)", borderRadius: 20, padding: "5px 14px 5px 10px", cursor: "pointer", fontFamily: "inherit" }}
-            >
-              <span style={{ fontSize: 14, color: "#fff" }}>✦</span>
-              <span style={{ color: "#7BCFFF", fontSize: 11, fontWeight: 700, letterSpacing: .3 }}>Generate AI Content</span>
-            </button>
-          )}
           {status === "generating" && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(25,163,252,.12)", border: "1px solid rgba(25,163,252,.25)", borderRadius: 20, padding: "4px 12px" }}>
               <div style={{ width: 10, height: 10, border: "2px solid rgba(25,163,252,.3)", borderTop: "2px solid #19A3FC", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
@@ -1949,19 +1926,10 @@ function ReportOverlay({ user, responses, onClose, cachedSummary, cachedAreaSumm
         {html ? (
           <>
             <div dangerouslySetInnerHTML={{ __html: html }} />
-            {(status === "idle" || status === "generating") && (
+            {status === "generating" && (
               <div style={{ padding: "20px 40px", background: "linear-gradient(135deg,#070F26,#0A1E3D)", display: "flex", alignItems: "center", gap: 14, borderBottomLeftRadius: 4, borderBottomRightRadius: 4 }}>
-                {status === "generating" ? (
-                  <>
-                    <div style={{ width: 18, height: 18, border: "2px solid rgba(25,163,252,.3)", borderTop: "2px solid #19A3FC", borderRadius: "50%", flexShrink: 0, animation: "spin 0.8s linear infinite" }} />
-                    <p style={{ color: "#7BCFFF", fontSize: 13, margin: 0 }}>AI narrative &amp; recommendations generating — report will update automatically when ready…</p>
-                  </>
-                ) : (
-                  <>
-                    <span style={{ fontSize: 18, flexShrink: 0 }}>✦</span>
-                    <p style={{ color: "#7BCFFF", fontSize: 13, margin: 0 }}>Click <strong style={{ color: "#fff" }}>Generate AI Content</strong> in the toolbar to add executive narrative, area summaries, and projected scores to this report.</p>
-                  </>
-                )}
+                <div style={{ width: 18, height: 18, border: "2px solid rgba(25,163,252,.3)", borderTop: "2px solid #19A3FC", borderRadius: "50%", flexShrink: 0, animation: "spin 0.8s linear infinite" }} />
+                <p style={{ color: "#7BCFFF", fontSize: 13, margin: 0 }}>AI narrative &amp; recommendations generating — report will update automatically when ready…</p>
               </div>
             )}
           </>
@@ -2400,7 +2368,7 @@ function MainApp({ user, responses, analyzing, onGoalComment, onQuestionComment,
     const active = activeView === view;
     return (
       <button key={view} onClick={() => setActiveView(view)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", borderRadius: 10, border: "none", background: active ? "rgba(255,255,255,.1)" : "none", color: active ? "white" : "rgba(255,255,255,.45)", fontFamily: "inherit", fontSize: 13.5, fontWeight: active ? 600 : 400, cursor: "pointer", width: "100%", textAlign: "left", transition: "all .15s" }}>
-        <span style={{ width: 28, height: 28, borderRadius: 8, background: active ? color : "rgba(255,255,255,.06)", display: "flex", alignItems: "center", justifyContent: "center", transition: "background .15s", flexShrink: 0 }}>{typeof icon === "string" && icon.startsWith("data:") ? <img src={icon} alt="" style={{ width: 16, height: 16, objectFit: "contain", opacity: active ? 1 : 0.8 }} /> : <span style={{ fontSize: 14 }}>{icon}</span>}</span>
+        <span style={{ width: 28, height: 28, borderRadius: 8, background: active ? color : "rgba(255,255,255,.06)", display: "flex", alignItems: "center", justifyContent: "center", transition: "background .15s", flexShrink: 0 }}>{typeof icon === "string" && icon.startsWith("data:") ? <img src={icon} alt="" style={{ width: 16, height: 16, objectFit: "contain", filter: "brightness(0) invert(1)", opacity: active ? 1 : 0.7 }} /> : <span style={{ fontSize: 14 }}>{icon}</span>}</span>
         {label}
         {view !== "dashboard" && stats.areaStats[view]?.scored > 0 && (
           <span style={{ marginLeft: "auto", fontSize: 10, background: "rgba(255,255,255,.12)", borderRadius: 20, padding: "2px 7px", color: "rgba(255,255,255,.7)" }}>
